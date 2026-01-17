@@ -1,0 +1,28 @@
+/* TailwindCSS v4.1 */
+@import 'tailwindcss';
+
+/* Create global styles for the attendance system */
+@variant dark (&:where(.dark, .dark *));
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--neutral-light-gray);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neutral-gray);
+  border-radius: var(--radius-md);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-dark-gray);
+}
+
+.input-field {
+  @apply w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 text-sm focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all dark:bg-zinc-800 dark:border-zinc-700 dark:text-white dark:focus:bg-zinc-900;
+}
