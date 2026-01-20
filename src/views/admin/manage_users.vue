@@ -37,12 +37,14 @@ const initialForm = {
   email: '',
   password: '',
   role: 'intern',
-  company_id: 1,
+  company_id: null,
   phone_number: '',
   address: '',
   bio: '',
 }
 const form = ref({ ...initialForm })
+
+const companies = computed(() => adminStore.companies)
 
 const filteredUsers = computed(() => {
   let users = adminStore.users
@@ -124,6 +126,13 @@ const handleReset = async (id) => {
 
 const handleSubmit = async () => {
   isLoading.value = true
+
+  if (form.value.role === 'intern' && !form.value.company_id) {
+    toastRef.value.addToast('Intern wajib memiliki company', 'error')
+    isLoading.value = false
+    return
+  }
+
   const payload = {}
   Object.entries(form.value).forEach(([k, v]) => {
     if (v !== '' && v !== null) payload[k] = v
@@ -148,6 +157,7 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   adminStore.fetchUsers()
+  adminStore.fetchCompanies()
 })
 </script>
 
@@ -368,6 +378,29 @@ onMounted(() => {
               </select>
             </div>
             <div class="space-y-1 md:col-span-2">
+              <div class="space-y-1">
+                <label class="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                  <Building2 size="14" />
+                  Company
+                </label>
+
+                <select
+                  v-model="form.company_id"
+                  class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                  :disabled="form.role === 'admin'"
+                  required
+                >
+                  <option disabled value="">Pilih Company</option>
+                  <option v-for="c in companies" :key="c.id" :value="c.id">
+                    {{ c.name }}
+                  </option>
+                </select>
+
+                <p v-if="form.role === 'admin'" class="text-[11px] text-gray-400 italic">
+                  Admin tidak terikat ke company
+                </p>
+              </div>
+
               <label class="text-xs font-bold text-gray-400 uppercase">Password</label>
               <input
                 v-model="form.password"

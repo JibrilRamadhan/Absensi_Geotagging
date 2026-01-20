@@ -6,6 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 export const useAdminStore = defineStore('admin', {
   state: () => ({
     users: [],
+    companies: [],
     loading: false,
     error: null,
   }),
@@ -122,6 +123,18 @@ export const useAdminStore = defineStore('admin', {
         return data
       } catch (error) {
         throw error.response?.data || { message: 'Gagal menghapus user' }
+      }
+    },
+
+    async fetchCompanies() {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/admin/companies`, {
+          headers: this.authHeader(),
+        })
+        this.companies = res.data
+      } catch (e) {
+        console.error('Failed fetch companies', e)
+        this.companies = []
       }
     },
   },
