@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   Sun,
   Moon,
+  MapPinHouse,
   LogOut,
   LayoutDashboard,
   ClipboardList,
@@ -33,6 +34,7 @@ const menuItems = computed(() => {
     return [
       { icon: 'LayoutDashboard', label: 'Admin Panel', path: '/admin/dashboard' },
       { icon: 'Users', label: 'Manage Users', path: '/admin/manage-users' },
+      { icon: 'MapPinHouse', label: 'Manage Office', path: '/admin/manage-office' },
       { icon: 'UserCircle', label: 'My Profile', path: '/profile' },
     ]
   } else {

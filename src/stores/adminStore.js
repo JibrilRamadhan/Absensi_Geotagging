@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 export const useAdminStore = defineStore('admin', {
   state: () => ({
@@ -126,15 +126,119 @@ export const useAdminStore = defineStore('admin', {
       }
     },
 
-    async fetchCompanies() {
+    async fetchOffice() {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/admin/companies`, {
+        const { data } = await axios.get(`${API_BASE_URL}/api/admin/office`, {
           headers: this.authHeader(),
         })
-        this.companies = res.data
-      } catch (e) {
-        console.error('Failed fetch companies', e)
-        this.companies = []
+        return data
+      } catch (error) {
+        console.error('Gagal load office', error)
+        return null
+      }
+    },
+
+    async saveOffice(payload) {
+      this.loading = true
+      try {
+        const { data } = await axios.post(`${API_BASE_URL}/api/admin/office`, payload, {
+          headers: this.authHeader(),
+        })
+        return data
+      } catch (error) {
+        throw error.response?.data || { message: 'Gagal menyimpan kantor' }
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async fetchCompanies() {
+      this.loading = true
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/api/admin/companies`, {
+          headers: this.authHeader(),
+        })
+        this.companies = data
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Gagal load companies'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async createCompany(payload) {
+      try {
+        await axios.post(`${API_BASE_URL}/api/admin/create/company`, payload, {
+          headers: this.authHeader(),
+        })
+        await this.fetchCompanies()
+      } catch (error) {
+        throw error.response?.data || { message: 'Gagal membuat company' }
+      }
+    },
+
+    async updateCompany(id, payload) {
+      try {
+        await axios.put(`${API_BASE_URL}/api/admin/companies/${id}`, payload, {
+          headers: this.authHeader(),
+        })
+        await this.fetchCompanies()
+      } catch (error) {
+        throw error.response?.data || { message: 'Gagal update company' }
+      }
+    },
+
+    async toggleCompanyStatus(id) {
+      try {
+        await axios.patch(
+          `${API_BASE_URL}/api/admin/companies/${id}/status`,
+          {},
+          {
+            headers: this.authHeader(),
+          },
+        )
+        await this.fetchCompanies()
+      } catch (error) {
+        throw error.response?.data
+      }
+    },
+
+    async deleteCompany(id) {
+      try {
+        await axios.delete(`${API_BASE_URL}/api/admin/companies/${id}`, {
+          headers: this.authHeader(),
+        })
+        await this.fetchCompanies()
+      } catch (error) {
+        throw error.response?.data || { message: 'Gagal hapus company' }
+      }
+    },
+
+    // --- OFFICE MANAGEMENT ---
+    async fetchOfficeById(companyId) {
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/api/admin/office/${companyId}`, {
+          headers: this.authHeader(),
+        })
+        return data
+      } catch (error) {
+        console.error('Gagal load office company ini', error)
+        return null
+      }
+    },
+
+    async saveOffice(payload) {
+      this.loading = true
+      try {
+        const { data } = await axios.post(`${API_BASE_URL}/api/admin/office`, payload, {
+          headers: this.authHeader(),
+        })
+        await this.fetchCompanies()
+        return data
+      } catch (error) {
+        throw error.response?.data || { message: 'Gagal menyimpan kantor' }
+      } finally {
+        this.loading = false
       }
     },
   },

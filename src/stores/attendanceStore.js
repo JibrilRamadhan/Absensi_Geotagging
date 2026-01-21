@@ -7,11 +7,29 @@ export const useAttendanceStore = defineStore('attendance', {
   state: () => ({
     loading: false,
     history: [],
+    today: null,
   }),
+
+  getters: {
+    alreadyCheckedIn: (state) => !!state.today?.check_in,
+    alreadyCheckedOut: (state) => !!state.today?.check_out,
+  },
 
   actions: {
     authHeader() {
       return { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    },
+
+    async fetchTodayStatus() {
+      try {
+        const date = new Date().toISOString().split('T')[0]
+        const { data } = await axios.get(`${API_BASE}/api/attendance/me/${date}`, {
+          headers: this.authHeader(),
+        })
+        this.today = data.length > 0 ? data[0] : null
+      } catch (err) {
+        console.error('Gagal cek status absen', err)
+      }
     },
 
     async submitAttendance(type, photoBlob, coords) {
@@ -30,13 +48,29 @@ export const useAttendanceStore = defineStore('attendance', {
           headers: {
             ...this.authHeader(),
             'Content-Type': 'multipart/form-data',
-            'x-screen': `${window.screen.width}x${window.screen.height}`, // Kirim ukuran layar untuk Risk Engine
+            'x-screen': `${window.screen.width}x${window.screen.height}`,
           },
         })
+
+        await this.fetchTodayStatus()
 
         return data
       } catch (error) {
         throw error.response?.data || { message: 'Gagal melakukan absensi' }
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async fetchHistory() {
+      this.loading = true
+      try {
+        const { data } = await axios.get(`${API_BASE}/api/attendance/me`, {
+          headers: this.authHeader(),
+        })
+        this.history = data
+      } catch (err) {
+        console.error('Gagal mengambil riwayat absen', err)
       } finally {
         this.loading = false
       }

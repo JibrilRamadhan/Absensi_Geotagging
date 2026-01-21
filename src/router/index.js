@@ -8,6 +8,7 @@ import UserDashboard from '../views/user/dashboard.vue'
 import Home from '../views/DashboardView.vue'
 import profile from '../components/Profile.vue'
 import Manage_users from '../views/admin/manage_users.vue'
+import manage_office from '@/views/admin/manage_office.vue'
 
 const routes = [
   {
@@ -38,6 +39,12 @@ const routes = [
         path: '/admin/manage-users',
         name: 'ManageUsers',
         component: Manage_users,
+        meta: { role: 'admin' },
+      },
+      {
+        path: '/admin/manage-office',
+        name: 'ManageOffice',
+        component: manage_office,
         meta: { role: 'admin' },
       },
       {

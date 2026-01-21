@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
+import api from '../api/axios'
 import {
   Edit2,
   Mail,
@@ -36,11 +37,44 @@ const editForm = reactive({
 })
 
 const attendanceStats = ref({
-  present: 22,
-  absent: 2,
-  late: 3,
-  total: 27,
+  present: 0,
+  absent: 0,
+  late: 0,
+  total: 0,
 })
+
+const fetchStats = async () => {
+  try {
+    const { data } = await api.get('/api/attendance/me/history')
+
+    let present = 0
+    let late = 0
+    let absent = 0
+
+    data.forEach((log) => {
+      //Jika check_in > jam 9 pagi = Telat (Contoh)
+      const checkInTime = new Date(log.check_in)
+      const limitTime = new Date(log.check_in)
+      limitTime.setHours(9, 0, 0) // Misal jam 9 teng
+
+      if (checkInTime > limitTime) {
+        late++
+      } else {
+        present++
+      }
+    })
+    const total = data.length
+
+    attendanceStats.value = {
+      present,
+      late,
+      absent,
+      total,
+    }
+  } catch (err) {
+    console.error('Gagal hitung statistik', err)
+  }
+}
 
 const user = computed(() => authStore.user)
 const isLoading = computed(() => authStore.loading)
@@ -53,6 +87,7 @@ onMounted(async () => {
 
   if (authStore.user) {
     syncForm(authStore.user)
+    fetchStats()
   }
 })
 

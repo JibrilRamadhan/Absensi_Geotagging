@@ -14,7 +14,10 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@tailwindcss/postcss": "^4.1.18",
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
+    "apexcharts": "^5.3.6",
     "axios": "^1.13.2",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",

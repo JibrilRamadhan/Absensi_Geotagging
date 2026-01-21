@@ -1,25 +1,21 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useAdminStore } from '../../stores/adminStore'
+import { useAdminStore, API_BASE_URL } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
 import {
   UserPlus,
-  Mail,
-  Lock,
   ShieldCheck,
   Building2,
   X,
-  CheckCircle2,
   Edit,
   Trash2,
   RotateCcw,
   Search,
-  Filter,
-  MapPin,
-  User,
-  Phone,
   Power,
   Ban,
+  MapPin,
+  Calendar,
+  Phone,
 } from 'lucide-vue-next'
 
 const adminStore = useAdminStore()
@@ -58,6 +54,12 @@ const filteredUsers = computed(() => {
   return users
 })
 
+const getAvatarUrl = (path) => {
+  if (!path) return null
+  if (path.startsWith('http')) return path
+  return `${API_BASE_URL}${path}`
+}
+
 const getInitials = (name) =>
   name
     ? name
@@ -67,8 +69,14 @@ const getInitials = (name) =>
         .substring(0, 2)
         .toUpperCase()
     : 'U'
+
 const formatDate = (d) =>
   d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+
+const formatJoinDate = (d) =>
+  d
+    ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '-'
 
 const openCreate = () => {
   isEdit.value = false
@@ -186,7 +194,7 @@ onMounted(() => {
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Cari personil..."
+          placeholder="Cari nama atau email..."
           class="w-full pl-12 py-3 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-orange-500 dark:text-white"
         />
       </div>
@@ -208,9 +216,10 @@ onMounted(() => {
           class="bg-gray-50 dark:bg-zinc-800/50 text-gray-400 text-xs uppercase font-semibold border-b dark:border-zinc-800"
         >
           <tr>
-            <th class="px-6 py-5">Profile</th>
+            <th class="px-6 py-5">Profile & Contact</th>
+            <th class="px-6 py-5">Office / Location</th>
             <th class="px-6 py-5">Role</th>
-            <th class="px-6 py-5">Attendance Info</th>
+            <th class="px-6 py-5">Attendance Today</th>
             <th class="px-6 py-5">Status</th>
             <th class="px-6 py-5 text-right">Actions</th>
           </tr>
@@ -221,16 +230,51 @@ onMounted(() => {
             :key="u.id"
             class="hover:bg-orange-50/50 dark:hover:bg-zinc-800/50 transition"
           >
-            <td class="px-6 py-4 flex items-center gap-4">
-              <div
-                class="w-10 h-10 rounded-full bg-linear-to-br from-orange-400 to-pink-500 text-white flex items-center justify-center font-bold text-sm shadow-sm"
-              >
-                {{ getInitials(u.name) }}
+            <td class="px-6 py-4">
+              <div class="flex items-start gap-4">
+                <div class="shrink-0">
+                  <img
+                    v-if="u.profile_picture"
+                    :src="getAvatarUrl(u.profile_picture)"
+                    alt="Avatar"
+                    class="w-12 h-12 rounded-full object-cover border border-gray-200 dark:border-zinc-700 shadow-sm"
+                    @error="(e) => (e.target.style.display = 'none')"
+                  />
+                  <div
+                    v-if="!u.profile_picture"
+                    class="w-12 h-12 rounded-full bg-linear-to-br from-orange-400 to-pink-500 text-white flex items-center justify-center font-bold text-lg shadow-sm"
+                  >
+                    {{ getInitials(u.name) }}
+                  </div>
+                </div>
+
+                <div>
+                  <p class="font-bold text-gray-800 dark:text-gray-100">{{ u.name }}</p>
+                  <div class="text-xs text-gray-500 space-y-0.5 mt-1">
+                    <p>{{ u.email }}</p>
+                    <p v-if="u.phone_number" class="flex items-center gap-1 text-gray-400">
+                      <Phone size="10" /> {{ u.phone_number }}
+                    </p>
+                    <p class="flex items-center gap-1 text-[10px] text-gray-400 mt-1">
+                      <Calendar size="10" /> Joined: {{ formatJoinDate(u.created_at) }}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p class="font-bold text-gray-800 dark:text-gray-100">{{ u.name }}</p>
-                <p class="text-xs text-gray-500">{{ u.email }}</p>
+            </td>
+
+            <td class="px-6 py-4">
+              <div v-if="u.role === 'intern' || u.company_name" class="flex flex-col gap-1">
+                <div class="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300">
+                  <Building2 size="16" class="text-orange-500" />
+                  {{ u.company_name || 'No Company' }}
+                </div>
+                <div v-if="u.address" class="flex items-start gap-2 text-xs text-gray-400 max-w-50">
+                  <MapPin size="12" class="mt-0.5 shrink-0" />
+                  <span class="truncate">{{ u.address }}</span>
+                </div>
               </div>
+              <div v-else class="text-xs text-gray-400 italic">Global Admin</div>
             </td>
 
             <td class="px-6 py-4">
@@ -341,7 +385,7 @@ onMounted(() => {
       </table>
     </div>
 
-    <div v-if="showModal" class="fixed inset-0 z-100 flex items-center justify-center p-4">
+    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showModal = false"></div>
       <div
         class="relative bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
@@ -358,7 +402,7 @@ onMounted(() => {
               <label class="text-xs font-bold text-gray-400 uppercase">Name</label>
               <input
                 v-model="form.name"
-                class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
                 required
               />
             </div>
@@ -366,13 +410,16 @@ onMounted(() => {
               <label class="text-xs font-bold text-gray-400 uppercase">Email</label>
               <input
                 v-model="form.email"
-                class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
                 required
               />
             </div>
             <div class="space-y-1">
               <label class="text-xs font-bold text-gray-400 uppercase">Role</label>
-              <select v-model="form.role" class="w-full p-3 rounded-xl bg-gray-50 border-none">
+              <select
+                v-model="form.role"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
+              >
                 <option value="intern">Intern</option>
                 <option value="admin">Admin</option>
               </select>
@@ -386,7 +433,7 @@ onMounted(() => {
 
                 <select
                   v-model="form.company_id"
-                  class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                  class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
                   :disabled="form.role === 'admin'"
                   required
                 >
@@ -401,12 +448,12 @@ onMounted(() => {
                 </p>
               </div>
 
-              <label class="text-xs font-bold text-gray-400 uppercase">Password</label>
+              <label class="text-xs font-bold text-gray-400 uppercase mt-4 block">Password</label>
               <input
                 v-model="form.password"
                 type="password"
                 :required="!isEdit"
-                class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Isi untuk ubah password"
               />
             </div>
@@ -414,18 +461,24 @@ onMounted(() => {
               <label class="text-xs font-bold text-gray-400 uppercase">Phone</label>
               <input
                 v-model="form.phone_number"
-                class="w-full p-3 rounded-xl bg-gray-50 border-none"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
             <div class="space-y-1">
               <label class="text-xs font-bold text-gray-400 uppercase">Address</label>
-              <input v-model="form.address" class="w-full p-3 rounded-xl bg-gray-50 border-none" />
+              <input
+                v-model="form.address"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
+              />
             </div>
-            <div class="md:col-span-2 pt-4 flex justify-end gap-3 border-t">
+            <div class="md:col-span-2 pt-4 flex justify-end gap-3 border-t dark:border-zinc-800">
               <button type="button" @click="showModal = false" class="px-6 py-3 text-gray-500">
                 Cancel
               </button>
-              <button type="submit" class="px-8 py-3 bg-orange-500 text-white rounded-xl font-bold">
+              <button
+                type="submit"
+                class="px-8 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition"
+              >
                 Save
               </button>
             </div>
@@ -435,6 +488,7 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
 <style scoped>
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;

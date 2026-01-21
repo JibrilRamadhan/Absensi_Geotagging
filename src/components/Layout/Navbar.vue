@@ -1,6 +1,15 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { Search, Mic, Bell, ChevronDown, LogOut, User } from 'lucide-vue-next'
+import {
+  Search,
+  Bell,
+  ChevronRight,
+  LogOut,
+  User,
+  SlidersHorizontal,
+  Sun,
+  Moon,
+} from 'lucide-vue-next'
 import api from '../../api/axios'
 import { useRouter } from 'vue-router'
 
@@ -8,12 +17,21 @@ const router = useRouter()
 
 const user = ref(null)
 const showDropdown = ref(false)
+const isDarkMode = ref(false)
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL
 
+const currentDate = computed(() => {
+  return new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+})
+
 const profileImage = computed(() => {
   if (!user.value?.profile_picture) {
-    return `${API_BASE}/uploads/profiles/default-guest.png`
+    return `https://ui-avatars.com/api/?name=${user.value?.name || 'User'}&background=random`
   }
   return `${API_BASE}${user.value.profile_picture}`
 })
@@ -32,6 +50,11 @@ const logout = () => {
   router.push('/login')
 }
 
+const toggleTheme = () => {
+  isDarkMode.value = !isDarkMode.value
+  document.documentElement.classList.toggle('dark')
+}
+
 onMounted(() => {
   fetchProfile()
   window.addEventListener('profile-updated', fetchProfile)
@@ -43,71 +66,111 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header class="flex items-center justify-between px-8 py-5 bg-gray-50 dark:bg-zinc-950">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
-      <p class="text-sm text-gray-400 font-medium mt-1">23 September, 2024</p>
+  <header
+    class="flex flex-col md:flex-row items-center justify-between px-8 py-5 bg-gray-50 dark:bg-zinc-950 gap-4 md:gap-0"
+  >
+    <div class="w-full md:w-auto text-center md:text-left">
+      <h1 class="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">Dashboard</h1>
+      <p class="text-sm text-gray-400 font-medium mt-1">{{ currentDate }}</p>
     </div>
 
-    <div class="hidden md:flex items-center gap-4 flex-1 max-w-xl mx-12">
-      <div class="relative flex-1">
-        <Search class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size="20" />
+    <div class="flex items-center gap-3 w-full md:max-w-md lg:max-w-lg mx-auto md:px-6">
+      <div class="relative flex-1 group">
+        <Search
+          class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors"
+          size="20"
+        />
         <input
           type="text"
           placeholder="Search anything"
-          class="w-full h-12 pl-12 pr-4 rounded-full bg-white dark:bg-zinc-900 border border-transparent focus:border-orange-200 focus:ring-4 focus:ring-orange-100 dark:focus:ring-zinc-800 outline-none text-sm shadow-sm transition-all"
+          class="w-full h-12 pl-12 pr-4 rounded-full bg-white dark:bg-zinc-900 border-none outline-none text-sm text-gray-600 dark:text-gray-200 placeholder-gray-400 shadow-sm focus:ring-2 focus:ring-orange-100 transition-all"
         />
       </div>
+
       <button
-        class="size-12 rounded-full bg-white dark:bg-zinc-900 flex items-center justify-center shadow-sm hover:shadow-md transition text-gray-500 dark:text-zinc-400"
+        class="size-12 shrink-0 rounded-full bg-white dark:bg-zinc-900 flex items-center justify-center shadow-sm hover:shadow-md hover:bg-gray-50 transition text-gray-500 dark:text-zinc-400"
+        title="Settings"
       >
-        <Mic size="20" />
+        <SlidersHorizontal size="20" />
       </button>
     </div>
 
-    <div class="flex items-center gap-6">
+    <div class="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-center md:justify-end">
+      <div class="hidden sm:flex bg-white dark:bg-zinc-900 rounded-full p-1 shadow-sm items-center">
+        <button
+          @click="toggleTheme"
+          class="p-1.5 rounded-full transition-all"
+          :class="!isDarkMode ? 'bg-black text-white' : 'text-gray-400'"
+        >
+          <Sun size="18" />
+        </button>
+        <button
+          @click="toggleTheme"
+          class="p-1.5 rounded-full transition-all"
+          :class="isDarkMode ? 'bg-white text-black' : 'text-gray-400'"
+        >
+          <Moon size="18" />
+        </button>
+      </div>
+
       <button
-        class="relative p-2 text-gray-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 rounded-full transition"
+        class="relative size-12 flex items-center justify-center bg-white dark:bg-zinc-900 rounded-full shadow-sm hover:shadow-md transition text-gray-500 dark:text-zinc-400"
       >
         <Bell size="22" />
         <span
-          class="absolute top-2 right-2 size-2 bg-orange-500 rounded-full border-2 border-gray-50 dark:border-zinc-950"
+          class="absolute top-3 right-3 size-2.5 bg-orange-500 rounded-full border-2 border-white dark:border-zinc-900"
         ></span>
       </button>
 
-      <div class="flex items-center gap-3 pl-6 border-l dark:border-zinc-800 relative">
-        <img
-          :src="profileImage"
-          class="size-10 rounded-full object-cover border shadow-sm cursor-pointer"
+      <div class="relative">
+        <div
+          class="flex items-center gap-3 bg-white dark:bg-zinc-900 rounded-full pl-1 pr-4 py-1 shadow-sm cursor-pointer hover:shadow-md transition select-none"
           @click="showDropdown = !showDropdown"
-        />
+        >
+          <img
+            :src="profileImage"
+            class="size-10 rounded-full object-cover border border-gray-100 dark:border-zinc-800"
+            alt="Profile"
+          />
 
-        <div class="hidden lg:block text-right">
-          <p class="text-sm font-bold text-gray-800 dark:text-white">
-            {{ user?.name || 'Unknown' }}
-          </p>
-          <p class="text-xs text-gray-400 capitalize">
-            {{ user?.role || '-' }}
-          </p>
+          <div class="hidden lg:block text-left">
+            <p class="text-sm font-bold text-gray-800 dark:text-white leading-tight">
+              {{ user?.name || 'Loading...' }}
+            </p>
+            <p class="text-xs text-gray-400 capitalize mt-0.5">
+              {{ user?.role || 'Guest' }}
+            </p>
+          </div>
+
+          <ChevronRight size="18" class="text-gray-400 ml-1" />
         </div>
 
-        <ChevronDown size="16" class="text-gray-400" />
-
-        <!-- DROPDOWN -->
-        <transition name="fade">
+        <transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="translate-y-2 opacity-0"
+          enter-to-class="translate-y-0 opacity-100"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="translate-y-0 opacity-100"
+          leave-to-class="translate-y-2 opacity-0"
+        >
           <div
             v-if="showDropdown"
-            class="absolute right-0 top-14 w-48 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden z-50"
+            class="absolute right-0 top-14 w-48 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden z-50"
           >
+            <div class="px-4 py-3 border-b border-gray-100 dark:border-zinc-800 lg:hidden">
+              <p class="text-sm font-bold text-gray-800 dark:text-white">{{ user?.name }}</p>
+              <p class="text-xs text-gray-500">{{ user?.role }}</p>
+            </div>
+
             <button
-              class="flex items-center gap-2 w-full px-4 py-3 hover:bg-gray-100 dark:hover:bg-zinc-800 text-sm"
+              class="flex items-center gap-2 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-800 text-sm text-gray-700 dark:text-gray-200 transition"
               @click="router.push('/profile')"
             >
               <User size="16" /> Profile
             </button>
 
             <button
-              class="flex items-center gap-2 w-full px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-500"
+              class="flex items-center gap-2 w-full px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-500 transition"
               @click="logout"
             >
               <LogOut size="16" /> Logout
