@@ -290,29 +290,35 @@ onMounted(() => {
 
             <td class="px-6 py-4">
               <div v-if="u.role === 'intern'">
-                <div v-if="u.check_in" class="flex flex-col gap-1">
+                <div v-if="u.check_in || u.check_in_at" class="flex flex-col gap-1">
                   <span
-                    class="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded w-fit"
-                    >Hadir</span
+                    class="text-[10px] font-bold text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full w-fit flex items-center gap-1"
                   >
-                  <span class="text-[10px] text-gray-400 font-mono"
-                    >{{ formatDate(u.check_in) }} -
-                    {{ u.check_out ? formatDate(u.check_out) : '...' }}</span
-                  >
+                    <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                    Hadir
+                  </span>
+                  <span class="text-[11px] text-gray-500 font-mono mt-0.5">
+                    {{ formatDate(u.check_in || u.check_in_at) }} -
+                    {{
+                      u.check_out || u.check_out_at
+                        ? formatDate(u.check_out || u.check_out_at)
+                        : '...'
+                    }}
+                  </span>
                 </div>
-                <span
-                  v-else
-                  class="text-xs text-gray-400 italic bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded"
-                  >Belum Absen</span
-                >
+
+                <div v-else>
+                  <span
+                    class="text-[10px] font-medium text-gray-400 italic bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700"
+                  >
+                    Belum Absen
+                  </span>
+                </div>
               </div>
 
-              <div v-else>
-                <span
-                  class="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded uppercase tracking-wider"
-                >
-                  No Attendance
-                </span>
+              <div v-else class="flex items-center gap-2 opacity-40">
+                <span class="text-lg font-bold text-gray-300 dark:text-zinc-600">-</span>
+                <span class="text-[10px] text-gray-400 uppercase tracking-widest">N/A</span>
               </div>
             </td>
 
