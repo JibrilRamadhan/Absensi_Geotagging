@@ -6,6 +6,9 @@ import {
   UserPlus,
   ShieldCheck,
   Building2,
+  Users,
+  UserCheck,
+  UserX,
   X,
   Edit,
   Trash2,
@@ -25,8 +28,20 @@ const showModal = ref(false)
 const isLoading = ref(false)
 const searchQuery = ref('')
 const filterRole = ref('all')
+const filterCompany = ref('all')
 const isEdit = ref(false)
 const selectedId = ref(null)
+
+const dashboardStats = computed(() => {
+  const users = adminStore.users
+  const companies = adminStore.companies
+  return {
+    total_users: users.length,
+    present_today: users.filter((u) => u.check_in_at).length,
+    absent_today: users.filter((u) => u.role === 'intern' && !u.check_in_at).length,
+    active_offices: companies.filter((c) => c.has_office).length,
+  }
+})
 
 const initialForm = {
   name: '',
@@ -45,6 +60,8 @@ const companies = computed(() => adminStore.companies)
 const filteredUsers = computed(() => {
   let users = adminStore.users
   if (filterRole.value !== 'all') users = users.filter((u) => u.role === filterRole.value)
+  if (filterCompany.value !== 'all')
+    users = users.filter((u) => u.company_id === filterCompany.value)
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     users = users.filter(
@@ -186,6 +203,53 @@ onMounted(() => {
       </button>
     </div>
 
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div
+        class="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-800 shadow-sm flex items-center gap-4"
+      >
+        <div class="p-3 bg-blue-50 text-blue-600 rounded-xl">
+          <Users size="24" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Total Users</p>
+          <p class="text-2xl font-bold dark:text-white">{{ dashboardStats.total_users }}</p>
+        </div>
+      </div>
+      <div
+        class="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-800 shadow-sm flex items-center gap-4"
+      >
+        <div class="p-3 bg-green-50 text-green-600 rounded-xl">
+          <UserCheck size="24" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Hadir Hari Ini</p>
+          <p class="text-2xl font-bold dark:text-white">{{ dashboardStats.present_today }}</p>
+        </div>
+      </div>
+      <div
+        class="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-800 shadow-sm flex items-center gap-4"
+      >
+        <div class="p-3 bg-red-50 text-red-600 rounded-xl">
+          <UserX size="24" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Belum Absen</p>
+          <p class="text-2xl font-bold dark:text-white">{{ dashboardStats.absent_today }}</p>
+        </div>
+      </div>
+      <div
+        class="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-800 shadow-sm flex items-center gap-4"
+      >
+        <div class="p-3 bg-orange-50 text-orange-600 rounded-xl">
+          <Building2 size="24" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Kantor Aktif</p>
+          <p class="text-2xl font-bold dark:text-white">{{ dashboardStats.active_offices }}</p>
+        </div>
+      </div>
+    </div>
+
     <div
       class="bg-white dark:bg-zinc-900 p-4 rounded-2xl border dark:border-zinc-800 shadow-sm flex gap-4"
     >
@@ -205,6 +269,13 @@ onMounted(() => {
         <option value="all">Semua Role</option>
         <option value="intern">Intern</option>
         <option value="admin">Admin</option>
+      </select>
+      <select
+        v-model="filterCompany"
+        class="px-4 py-3 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-orange-500 dark:text-white cursor-pointer"
+      >
+        <option value="all">Semua Company</option>
+        <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
     </div>
 
@@ -472,6 +543,15 @@ onMounted(() => {
                 v-model="form.address"
                 class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
               />
+            </div>
+            <div class="space-y-1 md:col-span-2">
+              <label class="text-xs font-bold text-gray-400 uppercase">Bio</label>
+              <textarea
+                v-model="form.bio"
+                rows="3"
+                class="w-full p-3 rounded-xl bg-gray-50 dark:bg-zinc-800 dark:text-white border-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Deskripsi singkat user..."
+              ></textarea>
             </div>
             <div class="md:col-span-2 pt-4 flex justify-end gap-3 border-t dark:border-zinc-800">
               <button type="button" @click="showModal = false" class="px-6 py-3 text-gray-500">
