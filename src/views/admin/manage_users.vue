@@ -290,7 +290,7 @@ onMounted(() => {
 
             <td class="px-6 py-4">
               <div v-if="u.role === 'intern'">
-                <div v-if="u.check_in || u.check_in_at" class="flex flex-col gap-1">
+                <div v-if="u.check_in_at" class="flex flex-col gap-1">
                   <span
                     class="text-[10px] font-bold text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full w-fit flex items-center gap-1"
                   >
@@ -298,12 +298,8 @@ onMounted(() => {
                     Hadir
                   </span>
                   <span class="text-[11px] text-gray-500 font-mono mt-0.5">
-                    {{ formatDate(u.check_in || u.check_in_at) }} -
-                    {{
-                      u.check_out || u.check_out_at
-                        ? formatDate(u.check_out || u.check_out_at)
-                        : '...'
-                    }}
+                    {{ formatDate(u.check_in_at) }} -
+                    {{ u.check_out_at ? formatDate(u.check_out_at) : '...' }}
                   </span>
                 </div>
 
