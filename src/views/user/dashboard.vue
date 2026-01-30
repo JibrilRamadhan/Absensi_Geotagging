@@ -95,18 +95,40 @@ const chartOptions = computed(() => ({
 
 const chartSeries = [{ name: 'Attendance', data: [40, 65, 50, 95, 60, 80, 55] }]
 
-const metrics = [
-  { title: 'Total Students', value: '570', icon: Users, change: '+12%', trend: 'up' },
-  {
-    title: 'Present Today',
-    value: '430',
-    icon: UserCheck,
-    subtitle: '75% Rate',
-    change: '+5%',
-    trend: 'up',
-  },
-  { title: 'Late Arrivals', value: '13', icon: Clock, change: '-2%', trend: 'down' },
-]
+const metrics = computed(() => {
+  const history = attendanceStore.history || []
+  let present = 0
+  let late = 0
+
+  history.forEach((log) => {
+    if (log.check_in) {
+      present++
+      const checkInTime = new Date(log.check_in)
+      const limitTime = new Date(log.check_in)
+      limitTime.setHours(9, 0, 0) // Batas jam 9 pagi
+      if (checkInTime > limitTime) late++
+    }
+  })
+
+  return [
+    {
+      title: 'Total Kehadiran',
+      value: present.toString(),
+      icon: UserCheck,
+      change: 'History',
+      trend: 'up',
+    },
+    {
+      title: 'Tepat Waktu',
+      value: (present - late).toString(),
+      icon: Users,
+      subtitle: 'Good Job!',
+      change: 'On Time',
+      trend: 'up',
+    },
+    { title: 'Terlambat', value: late.toString(), icon: Clock, change: 'Alert', trend: 'down' },
+  ]
+})
 
 const recentActivity = computed(() => {
   return attendanceStore.history.slice(0, 5).map((log) => {
@@ -156,7 +178,7 @@ onMounted(async () => {
   await Promise.all([
     authStore.fetchUser(),
     attendanceStore.fetchTodayStatus(),
-    attendanceStore.fetchHistory(),
+    // attendanceStore.fetchHistory(), // Pastikan action ini ada di attendanceStore
     getUserLocation(),
   ])
 })

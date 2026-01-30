@@ -87,7 +87,11 @@ const openEdit = (c) => {
 const submitCompany = async () => {
   try {
     if (isEdit.value) {
-      await adminStore.updateCompany(formCompany.value.id, { name: formCompany.value.name })
+      if (adminStore.updateCompany) {
+        await adminStore.updateCompany(formCompany.value.id, { name: formCompany.value.name })
+      } else {
+        throw new Error('Fitur update company belum tersedia di store')
+      }
     } else {
       await adminStore.createCompany({ name: formCompany.value.name })
     }
@@ -106,7 +110,11 @@ const deleteComp = async (c) => {
   )
     return
   try {
-    await adminStore.deleteCompany(c.id)
+    if (adminStore.deleteCompany) {
+      await adminStore.deleteCompany(c.id)
+    } else {
+      throw new Error('Fitur delete company belum tersedia di store')
+    }
     toastRef.value.addToast('Perusahaan dihapus', 'success')
   } catch (e) {
     toastRef.value.addToast(e.message || 'Gagal hapus', 'error')
@@ -119,7 +127,7 @@ const openLocation = async (c) => {
   formLocation.value.company_id = c.id
   formLocation.value.company_name = c.name
 
-  const data = await adminStore.fetchOfficeById(c.id)
+  const data = await adminStore.getOffice(c.id)
 
   if (data && data.latitude) {
     formLocation.value.latitude = parseFloat(data.latitude)

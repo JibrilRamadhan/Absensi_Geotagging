@@ -36,11 +36,14 @@ const menuItems = computed(() => {
       { icon: 'Users', label: 'Manage Users', path: '/admin/manage-users' },
       { icon: 'MapPinHouse', label: 'Manage Office', path: '/admin/manage-office' },
       { icon: 'UserCircle', label: 'My Profile', path: '/profile' },
+      { icon: 'ClipboardList', label: 'Manage Leaves', path: '/admin/manage-leaves' },
+      { icon: 'FileClock', label: 'Manage Holidays', path: '/admin/manage-holidays' },
     ]
   } else {
     return [
       { icon: 'LayoutDashboard', label: 'Home Dashboard', path: '/dashboard' },
       { icon: 'UserCircle', label: 'My Profile', path: '/profile' },
+      { icon: 'ClipboardList', label: 'My Leaves', path: '/leaves' },
     ]
   }
 })

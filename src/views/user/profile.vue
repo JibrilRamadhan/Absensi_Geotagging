@@ -19,6 +19,7 @@ const form = ref({
   profile_picture: null,
 })
 
+// Sinkronisasi data user ke form saat data tersedia
 watch(
   () => authStore.user,
   (newUser) => {

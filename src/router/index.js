@@ -6,9 +6,12 @@ import LoginPage from '../views/LoginPage.vue'
 import AdminDashboard from '../views/admin/dashboard.vue'
 import UserDashboard from '../views/user/dashboard.vue'
 import Home from '../views/DashboardView.vue'
-import profile from '../components/Profile.vue'
+import UserProfile from '../views/user/profile.vue'
+import UserLeaves from '../views/user/leaves.vue'
 import Manage_users from '../views/admin/manage_users.vue'
 import manage_office from '@/views/admin/manage_office.vue'
+import manage_leaves from '@/views/admin/manage_leaves.vue'
+import manage_holidays from '@/views/admin/manage_holidays.vue'
 
 const routes = [
   {
@@ -48,6 +51,18 @@ const routes = [
         meta: { role: 'admin' },
       },
       {
+        path: '/admin/manage-leaves',
+        name: 'ManageLeaves',
+        component: manage_leaves,
+        meta: { role: 'admin' },
+      },
+      {
+        path: '/admin/manage-holidays',
+        name: 'ManageHolidays',
+        component: manage_holidays,
+        meta: { role: 'admin' },
+      },
+      {
         path: 'dashboard',
         name: 'UserDashboard',
         component: UserDashboard,
@@ -55,8 +70,14 @@ const routes = [
       },
       {
         path: 'profile',
-        name: 'Profile',
-        component: profile,
+        name: 'UserProfile',
+        component: UserProfile,
+      },
+      {
+        path: 'leaves',
+        name: 'UserLeaves',
+        component: UserLeaves,
+        meta: { role: 'intern' },
       },
     ],
   },

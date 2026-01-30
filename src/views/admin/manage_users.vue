@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useAdminStore, API_BASE_URL } from '../../stores/adminStore'
+import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
 import {
   UserPlus,
@@ -19,12 +19,20 @@ import {
   MapPin,
   Calendar,
   Phone,
+  FileText,
+  Activity,
+  Download,
 } from 'lucide-vue-next'
 
 const adminStore = useAdminStore()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const toastRef = ref(null)
 
 const showModal = ref(false)
+const showAuditModal = ref(false)
+const auditLogs = ref([])
+const selectedUserAudit = ref(null)
+
 const isLoading = ref(false)
 const searchQuery = ref('')
 const filterRole = ref('all')
@@ -109,14 +117,38 @@ const openEdit = (user) => {
   showModal.value = true
 }
 
+const openAudit = async (user) => {
+  selectedUserAudit.value = user
+  showAuditModal.value = true
+  auditLogs.value = []
+  try {
+    if (adminStore.fetchUserAuditLogs) {
+      const logs = await adminStore.fetchUserAuditLogs(user.id)
+      auditLogs.value = logs
+    } else {
+      // toastRef.value.addToast('Fitur Audit Log belum tersedia di Store', 'error')
+    }
+  } catch (error) {
+    toastRef.value.addToast('Gagal memuat audit log', 'error')
+  }
+}
+
+const handleExportDaily = async () => {
+  const today = new Date().toISOString().split('T')[0]
+  try {
+    await adminStore.exportDailyData(today)
+    toastRef.value.addToast('Export berhasil didownload', 'success')
+  } catch (error) {
+    toastRef.value.addToast('Gagal export data', 'error')
+  }
+}
+
 const toggleStatus = async (user) => {
   const newStatus = !user.status
   if (!newStatus && !confirm(`Nonaktifkan akses login untuk ${user.name}?`)) return
 
   try {
-    if (newStatus) await adminStore.enableUser(user.id)
-    else await adminStore.disableUser(user.id)
-
+    await adminStore.toggleUserStatus(user.id, newStatus)
     toastRef.value.addToast(`User ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`, 'success')
   } catch (error) {
     toastRef.value.addToast('Gagal mengubah status', 'error')
@@ -195,12 +227,20 @@ onMounted(() => {
         <h1 class="text-3xl font-bold dark:text-white">Manage Users</h1>
         <p class="text-gray-500">Kelola akses, registrasi, dan status personil.</p>
       </div>
-      <button
-        @click="openCreate"
-        class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:-translate-y-1"
-      >
-        <UserPlus size="20" /> <span>Add User</span>
-      </button>
+      <div class="flex gap-3">
+        <button
+          @click="handleExportDaily"
+          class="bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border dark:border-zinc-700 px-4 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-sm hover:bg-gray-50 transition"
+        >
+          <FileText size="20" /> <span>Export Harian</span>
+        </button>
+        <button
+          @click="openCreate"
+          class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:-translate-y-1"
+        >
+          <UserPlus size="20" /> <span>Add User</span>
+        </button>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -409,6 +449,14 @@ onMounted(() => {
             <td class="px-6 py-4 text-right">
               <div class="flex justify-end gap-2">
                 <button
+                  @click="openAudit(u)"
+                  class="p-2 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-lg transition"
+                  title="Audit Log"
+                >
+                  <Activity size="18" />
+                </button>
+
+                <button
                   @click="openEdit(u)"
                   class="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition"
                   title="Edit Data"
@@ -565,6 +613,44 @@ onMounted(() => {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Audit Log -->
+    <div v-if="showAuditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        @click="showAuditModal = false"
+      ></div>
+      <div
+        class="relative bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+      >
+        <div class="p-5 border-b dark:border-zinc-800 flex justify-between items-center">
+          <h3 class="font-bold text-lg dark:text-white flex items-center gap-2">
+            <Activity class="text-purple-500" /> Audit Log: {{ selectedUserAudit?.name }}
+          </h3>
+          <button @click="showAuditModal = false"><X class="text-gray-500" /></button>
+        </div>
+        <div class="p-0 overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-zinc-950">
+          <div v-if="auditLogs.length === 0" class="p-8 text-center text-gray-400 italic">
+            Belum ada aktivitas tercatat.
+          </div>
+          <div v-else class="divide-y divide-gray-100 dark:divide-zinc-800">
+            <div
+              v-for="(log, idx) in auditLogs"
+              :key="idx"
+              class="p-4 bg-white dark:bg-zinc-900 flex gap-3"
+            >
+              <div class="text-xs font-mono text-gray-400 w-24 shrink-0 pt-1">
+                {{ new Date(log.created_at).toLocaleString() }}
+              </div>
+              <div>
+                <p class="text-sm font-medium dark:text-gray-200">{{ log.action }}</p>
+                <p class="text-xs text-gray-500">{{ log.details }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

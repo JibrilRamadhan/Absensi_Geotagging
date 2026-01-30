@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import ApexCharts from 'apexcharts'
-import { useAdminStore, API_BASE_URL } from '../../stores/adminStore'
-import { Users, UserCheck, UserX, Building2, Clock, MapPin } from 'lucide-vue-next'
+import { useAdminStore } from '../../stores/adminStore'
+import { Users, UserCheck, AlertCircle, Building2, Clock, MapPin, RefreshCw } from 'lucide-vue-next'
 import Toast from '../../components/Allert/allert.vue'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const adminStore = useAdminStore()
 const toastRef = ref(null)
 const isLoading = ref(true)
@@ -12,62 +13,107 @@ const attendanceChartEl = ref(null)
 const companyChartEl = ref(null)
 let attendanceChart = null
 let companyChart = null
-let themeObserver = null
+let resizeObserver = null
 
+const loadData = async () => {
+  isLoading.value = true
+  try {
+    await Promise.all([adminStore.fetchUsers(), adminStore.fetchCompanies()])
+  } catch (error) {
+    toastRef.value?.addToast('Gagal memuat data dashboard', 'error')
+  } finally {
+    isLoading.value = false
+    nextTick(initCharts)
+  }
+}
+
+// --- Computed Stats ---
 const stats = computed(() => {
   const users = adminStore.users
   const companies = adminStore.companies
-  return {
-    total_users: users.length,
-    present_today: users.filter((u) => u.check_in_at).length,
-    absent_today: users.filter((u) => u.role === 'intern' && !u.check_in_at).length,
-    active_offices: companies.filter((c) => c.has_office).length,
-  }
+
+  // Hitung data real
+  const totalUsers = users.length
+  const present = users.filter((u) => u.check_in_at).length
+  const absent = users.filter((u) => u.role === 'intern' && !u.check_in_at).length
+  const activeOffices = companies.filter((c) => c.has_office).length
+
+  return [
+    {
+      label: 'Total Interns',
+      value: totalUsers,
+      icon: Users,
+      color: 'text-indigo-600 dark:text-indigo-400',
+      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+    },
+    {
+      label: 'Hadir Hari Ini',
+      value: present,
+      icon: UserCheck,
+      color: 'text-emerald-600 dark:text-emerald-400',
+      bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+    },
+    {
+      label: 'Belum Hadir',
+      value: absent,
+      icon: AlertCircle,
+      color: 'text-rose-600 dark:text-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-900/20',
+    },
+    {
+      label: 'Kantor Aktif',
+      value: activeOffices,
+      icon: Building2,
+      color: 'text-amber-600 dark:text-amber-400',
+      bg: 'bg-amber-50 dark:bg-amber-900/20',
+    },
+  ]
 })
 
-const presentUsers = computed(() => {
+const liveAttendance = computed(() => {
   return adminStore.users
     .filter((u) => u.check_in_at)
     .sort((a, b) => new Date(b.check_in_at) - new Date(a.check_in_at))
 })
 
-const getAvatarUrl = (path) => {
-  if (!path) return null
-  if (path.startsWith('http')) return path
-  return `${API_BASE_URL}${path}`
-}
-
+// --- Helpers ---
+const getAvatar = (path) =>
+  path ? (path.startsWith('http') ? path : `${API_BASE_URL}${path}`) : null
 const getInitials = (name) =>
   name
-    ? name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
-    : 'U'
-const formatTime = (d) =>
-  d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+    ?.split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase() || 'U'
+const formatTime = (isoString) =>
+  isoString
+    ? new Date(isoString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    : '-'
 
+// --- Chart Logic ---
 const initCharts = () => {
-  if (attendanceChart) attendanceChart.destroy()
-  if (companyChart) companyChart.destroy()
+  if (!attendanceChartEl.value || !companyChartEl.value) return
 
   const isDark = document.documentElement.classList.contains('dark')
-  const textColor = isDark ? '#a1a1aa' : '#6b7280'
-  const gridColor = isDark ? '#27272a' : '#f3f4f6'
+  const textColor = isDark ? '#a1a1aa' : '#64748b'
+  const fontFamily = 'Inter, sans-serif'
 
-  // Donut Chart - Attendance
-  const attendanceOptions = {
-    series: [stats.value.present_today, stats.value.absent_today],
-    labels: ['Hadir', 'Belum Hadir'],
+  // 1. Attendance Donut Chart
+  const presentCount = stats.value[1].value
+  const absentCount = stats.value[2].value
+
+  if (attendanceChart) attendanceChart.destroy()
+  attendanceChart = new ApexCharts(attendanceChartEl.value, {
+    series: [presentCount, absentCount],
+    labels: ['Hadir', 'Absen'],
     chart: {
       type: 'donut',
-      height: 320,
+      height: 280,
       background: 'transparent',
-      fontFamily: 'inherit',
+      fontFamily,
     },
-    colors: ['#22c55e', '#ef4444'],
+    colors: ['#10b981', '#f43f5e'],
     plotOptions: {
       pie: {
         donut: {
@@ -76,288 +122,286 @@ const initCharts = () => {
             show: true,
             total: {
               show: true,
-              label: 'Total Interns',
-              color: isDark ? '#fff' : '#374151',
-              formatter: () => stats.value.present_today + stats.value.absent_today,
+              label: 'Total',
+              color: textColor,
+              fontSize: '14px',
+              fontWeight: 500,
+              formatter: () => presentCount + absentCount,
             },
             value: {
-              color: isDark ? '#fff' : '#374151',
+              color: isDark ? '#fff' : '#0f172a',
               fontSize: '24px',
-              fontWeight: 600,
+              fontWeight: 700,
+              offsetY: 2,
             },
           },
         },
       },
     },
     dataLabels: { enabled: false },
-    legend: {
-      position: 'bottom',
-      labels: { colors: textColor },
-    },
     stroke: { show: false },
-    theme: { mode: isDark ? 'dark' : 'light' },
-  }
+    legend: { position: 'bottom', labels: { colors: textColor } },
+    tooltip: { theme: isDark ? 'dark' : 'light' },
+  })
+  attendanceChart.render()
 
-  if (attendanceChartEl.value) {
-    attendanceChart = new ApexCharts(attendanceChartEl.value, attendanceOptions)
-    attendanceChart.render()
-  }
-
-  // Bar Chart - Company Distribution
+  // 2. Company Distribution Bar Chart
   const companyCounts = {}
   adminStore.users.forEach((u) => {
     if (u.role === 'intern') {
-      const name = u.company_name || 'No Company'
+      const name = u.company_name || 'Unassigned'
       companyCounts[name] = (companyCounts[name] || 0) + 1
     }
   })
 
-  const companyOptions = {
+  if (companyChart) companyChart.destroy()
+  companyChart = new ApexCharts(companyChartEl.value, {
     series: [{ name: 'Interns', data: Object.values(companyCounts) }],
     chart: {
       type: 'bar',
-      height: 320,
+      height: 280,
       background: 'transparent',
       toolbar: { show: false },
-      fontFamily: 'inherit',
+      fontFamily,
     },
-    colors: ['#f97316'],
+    colors: ['#6366f1'],
     plotOptions: {
-      bar: { borderRadius: 6, columnWidth: '50%' },
+      bar: { borderRadius: 6, columnWidth: '45%', distributed: true },
     },
     xaxis: {
       categories: Object.keys(companyCounts),
-      labels: { style: { colors: textColor } },
+      labels: { style: { colors: textColor, fontSize: '12px' } },
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
-    yaxis: {
-      labels: { style: { colors: textColor } },
-    },
+    yaxis: { show: false },
     grid: {
-      borderColor: gridColor,
+      borderColor: isDark ? '#27272a' : '#f1f5f9',
       strokeDashArray: 4,
     },
-    theme: { mode: isDark ? 'dark' : 'light' },
-  }
-
-  if (companyChartEl.value) {
-    companyChart = new ApexCharts(companyChartEl.value, companyOptions)
-    companyChart.render()
-  }
+    legend: { show: false },
+    tooltip: { theme: isDark ? 'dark' : 'light' },
+  })
+  companyChart.render()
 }
 
+// --- Lifecycle ---
 onMounted(async () => {
-  isLoading.value = true
-  await Promise.all([adminStore.fetchUsers(), adminStore.fetchCompanies()])
-  isLoading.value = false
-  nextTick(() => {
-    initCharts()
-    themeObserver = new MutationObserver(() => initCharts())
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
+  await loadData()
+
+  // Auto-refresh chart jika tema berubah atau window resize
+  resizeObserver = new ResizeObserver(() => {
+    requestAnimationFrame(initCharts)
   })
+  resizeObserver.observe(document.body)
 })
 
 onUnmounted(() => {
   if (attendanceChart) attendanceChart.destroy()
   if (companyChart) companyChart.destroy()
-  if (themeObserver) themeObserver.disconnect()
+  if (resizeObserver) resizeObserver.disconnect()
 })
 </script>
 
 <template>
-  <div class="p-6 space-y-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
+  <div
+    class="p-6 min-h-screen bg-gray-50 dark:bg-[#0a0a0a] font-sans transition-colors duration-300"
+  >
     <Toast ref="toastRef" />
 
-    <Transition name="fade" appear>
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <div>
-        <h1 class="text-3xl font-bold dark:text-white mb-2">Admin Dashboard</h1>
-        <p class="text-gray-500 dark:text-zinc-400">Ringkasan aktivitas hari ini.</p>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+          Dashboard Overview
+        </h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">
+          Pantau aktivitas kehadiran dan statistik peserta magang.
+        </p>
       </div>
-    </Transition>
-
-    <div v-if="isLoading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
-      <div
-        v-for="i in 4"
-        :key="i"
-        class="h-32 bg-white dark:bg-zinc-900 rounded-2xl animate-pulse"
-      ></div>
+      <button
+        @click="loadData"
+        class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition"
+      >
+        <RefreshCw size="16" :class="{ 'animate-spin': isLoading }" />
+        Refresh Data
+      </button>
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <div
-        class="p-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border dark:border-zinc-800 flex flex-col justify-between hover:-translate-y-1 transition duration-300"
+        v-for="(stat, idx) in stats"
+        :key="idx"
+        class="bg-white dark:bg-[#121212] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800/60 hover:border-gray-200 dark:hover:border-zinc-700 transition-all duration-300 group"
       >
-        <div class="flex justify-between items-start">
-          <div class="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl">
-            <Users class="text-blue-600 dark:text-blue-400" size="24" />
+        <div class="flex justify-between items-start mb-4">
+          <div :class="`p-3 rounded-xl ${stat.bg}`">
+            <component :is="stat.icon" :class="`w-6 h-6 ${stat.color}`" />
           </div>
-          <span
-            class="text-xs font-bold bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded-md text-gray-500"
-            >Total</span
-          >
+          <div
+            v-if="isLoading"
+            class="h-8 w-12 bg-gray-200 dark:bg-zinc-800 rounded-lg animate-pulse"
+          ></div>
+          <span v-else class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{{
+            stat.value
+          }}</span>
         </div>
-        <div>
-          <h3 class="text-3xl font-bold dark:text-white mt-4">{{ stats.total_users }}</h3>
-          <p class="text-sm text-gray-500">Total Users</p>
-        </div>
-      </div>
-
-      <div
-        class="p-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border dark:border-zinc-800 flex flex-col justify-between hover:-translate-y-1 transition duration-300"
-      >
-        <div class="flex justify-between items-start">
-          <div class="p-3 bg-green-50 dark:bg-green-500/10 rounded-xl">
-            <UserCheck class="text-green-600 dark:text-green-400" size="24" />
-          </div>
-          <span
-            class="text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-md"
-            >Live</span
-          >
-        </div>
-        <div>
-          <h3 class="text-3xl font-bold dark:text-white mt-4">{{ stats.present_today }}</h3>
-          <p class="text-sm text-gray-500">Hadir Hari Ini</p>
-        </div>
-      </div>
-
-      <div
-        class="p-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border dark:border-zinc-800 flex flex-col justify-between hover:-translate-y-1 transition duration-300"
-      >
-        <div class="flex justify-between items-start">
-          <div class="p-3 bg-red-50 dark:bg-red-500/10 rounded-xl">
-            <UserX class="text-red-600 dark:text-red-400" size="24" />
-          </div>
-          <span
-            class="text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-2 py-1 rounded-md"
-            >Alert</span
-          >
-        </div>
-        <div>
-          <h3 class="text-3xl font-bold dark:text-white mt-4">{{ stats.absent_today }}</h3>
-          <p class="text-sm text-gray-500">Belum Hadir</p>
-        </div>
-      </div>
-
-      <div
-        class="p-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border dark:border-zinc-800 flex flex-col justify-between hover:-translate-y-1 transition duration-300"
-      >
-        <div class="flex justify-between items-start">
-          <div class="p-3 bg-purple-50 dark:bg-purple-500/10 rounded-xl">
-            <Building2 class="text-purple-600 dark:text-purple-400" size="24" />
-          </div>
-          <span
-            class="text-xs font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2 py-1 rounded-md"
-            >Active</span
-          >
-        </div>
-        <div>
-          <h3 class="text-3xl font-bold dark:text-white mt-4">{{ stats.active_offices }}</h3>
-          <p class="text-sm text-gray-500">Kantor Terdaftar</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Charts Section -->
-    <div v-if="!isLoading" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border dark:border-zinc-800">
-        <h3 class="text-lg font-bold dark:text-white mb-4">Statistik Kehadiran</h3>
-        <div ref="attendanceChartEl"></div>
-      </div>
-      <div
-        class="lg:col-span-2 bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border dark:border-zinc-800"
-      >
-        <h3 class="text-lg font-bold dark:text-white mb-4">Distribusi Peserta Magang</h3>
-        <div ref="companyChartEl"></div>
-      </div>
-    </div>
-
-    <!-- Live Attendance Section -->
-    <div
-      class="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border dark:border-zinc-800 overflow-hidden"
-    >
-      <div class="p-6 border-b dark:border-zinc-800 flex justify-between items-center">
-        <div>
-          <h2 class="text-lg font-bold dark:text-white">Live Attendance Monitor</h2>
-          <p class="text-sm text-gray-500">Daftar kehadiran real-time hari ini.</p>
-        </div>
-        <span
-          class="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded-full animate-pulse"
+        <p
+          class="text-sm font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors"
         >
-          {{ presentUsers.length }} Online
-        </span>
+          {{ stat.label }}
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-1 space-y-8">
+        <div
+          class="bg-white dark:bg-[#121212] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60"
+        >
+          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6">Persentase Kehadiran</h3>
+          <div
+            v-if="isLoading"
+            class="h-[280px] bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
+          ></div>
+          <div v-else ref="attendanceChartEl"></div>
+        </div>
+
+        <div
+          class="bg-white dark:bg-[#121212] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60"
+        >
+          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6">
+            Distribusi per Perusahaan
+          </h3>
+          <div
+            v-if="isLoading"
+            class="h-[280px] bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
+          ></div>
+          <div v-else ref="companyChartEl"></div>
+        </div>
       </div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-left">
-          <thead
-            class="bg-gray-50 dark:bg-zinc-800/50 text-gray-400 text-xs uppercase font-semibold"
+      <div class="lg:col-span-2">
+        <div
+          class="bg-white dark:bg-[#121212] rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60 overflow-hidden flex flex-col h-full"
+        >
+          <div
+            class="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center"
           >
-            <tr>
-              <th class="px-6 py-4">User</th>
-              <th class="px-6 py-4">Check In</th>
-              <th class="px-6 py-4">Location</th>
-              <th class="px-6 py-4">Status</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-zinc-800">
-            <tr v-if="presentUsers.length === 0">
-              <td colspan="4" class="px-6 py-8 text-center text-gray-500 italic">
-                Belum ada yang hadir hari ini.
-              </td>
-            </tr>
-            <tr
-              v-for="user in presentUsers"
-              :key="user.id"
-              class="hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition"
+            <div>
+              <h3 class="text-lg font-bold text-gray-900 dark:text-white">Live Attendance</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-400">Real-time update hari ini</p>
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
             >
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-3">
-                  <img
-                    v-if="user.profile_picture"
-                    :src="getAvatarUrl(user.profile_picture)"
-                    class="w-8 h-8 rounded-full object-cover"
-                  />
-                  <div
-                    v-else
-                    class="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold"
-                  >
-                    {{ getInitials(user.name) }}
-                  </div>
-                  <span class="font-medium dark:text-gray-200">{{ user.name }}</span>
-                </div>
-              </td>
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <Clock size="14" class="text-green-500" />
-                  {{ formatTime(user.check_in_at) }}
-                </div>
-              </td>
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <Building2 size="14" class="text-blue-500" />
-                  {{ user.company_name || 'Unknown Office' }}
-                </div>
-              </td>
-              <td class="px-6 py-4">
-                <span
-                  v-if="user.check_out_at"
-                  class="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded"
-                  >Checked Out</span
-                >
-                <span
+              <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+              {{ liveAttendance.length }} Hadir
+            </span>
+          </div>
+
+          <div class="overflow-x-auto flex-1">
+            <table class="w-full text-left border-collapse">
+              <thead
+                class="bg-gray-50/50 dark:bg-zinc-800/30 text-gray-400 text-xs uppercase font-semibold"
+              >
+                <tr>
+                  <th class="px-6 py-4">User</th>
+                  <th class="px-6 py-4">Check In</th>
+                  <th class="px-6 py-4 hidden md:table-cell">Kantor</th>
+                  <th class="px-6 py-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-zinc-800">
+                <tr v-if="isLoading">
+                  <td colspan="4" class="px-6 py-4">
+                    <div class="flex gap-4 animate-pulse">
+                      <div class="w-10 h-10 bg-gray-200 dark:bg-zinc-800 rounded-full"></div>
+                      <div class="flex-1 space-y-2 py-1">
+                        <div class="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-1/4"></div>
+                        <div class="h-3 bg-gray-200 dark:bg-zinc-800 rounded w-1/3"></div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-else-if="liveAttendance.length === 0">
+                  <td colspan="4" class="px-6 py-12 text-center text-gray-400">
+                    <div class="flex flex-col items-center gap-2">
+                      <Clock size="32" class="opacity-20" />
+                      <p>Belum ada yang check-in hari ini.</p>
+                    </div>
+                  </td>
+                </tr>
+                <tr
                   v-else
-                  class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded flex items-center gap-1 w-fit"
+                  v-for="user in liveAttendance"
+                  :key="user.id"
+                  class="group hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
                 >
-                  <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Working
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                      <div
+                        class="w-10 h-10 rounded-full border-2 border-white dark:border-zinc-800 shadow-sm overflow-hidden bg-gray-100 dark:bg-zinc-800 flex items-center justify-center shrink-0"
+                      >
+                        <img
+                          v-if="user.profile_picture"
+                          :src="getAvatar(user.profile_picture)"
+                          class="w-full h-full object-cover"
+                        />
+                        <span v-else class="text-xs font-bold text-gray-400">{{
+                          getInitials(user.name)
+                        }}</span>
+                      </div>
+                      <div>
+                        <p
+                          class="font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
+                        >
+                          {{ user.name }}
+                        </p>
+                        <p class="text-xs text-gray-500">{{ user.email }}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div
+                      class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium"
+                    >
+                      <Clock size="14" class="text-emerald-500" />
+                      {{ formatTime(user.check_in_at) }}
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 hidden md:table-cell">
+                    <div class="flex items-center gap-2 text-sm text-gray-500">
+                      <Building2 size="14" class="text-indigo-500" />
+                      <span class="truncate max-w-[150px]">{{ user.company_name || 'N/A' }}</span>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 text-center">
+                    <span
+                      v-if="user.check_out_at"
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400"
+                    >
+                      Pulang
+                    </span>
+                    <span
+                      v-else
+                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    >
+                      <span class="relative flex h-2 w-2">
+                        <span
+                          class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+                        ></span>
+                        <span
+                          class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"
+                        ></span>
+                      </span>
+                      Aktif
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>

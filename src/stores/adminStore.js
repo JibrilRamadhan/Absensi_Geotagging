@@ -1,245 +1,123 @@
 import { defineStore } from 'pinia'
-import axios from 'axios'
-
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+import api from '../api/axios'
 
 export const useAdminStore = defineStore('admin', {
   state: () => ({
     users: [],
     companies: [],
+    leaves: [],
+    holidays: [],
     loading: false,
-    error: null,
   }),
 
-  getters: {
-    activeUsers: (state) => state.users.filter((u) => u.active !== false),
-    internUsers: (state) => state.users.filter((u) => u.role === 'intern'),
-    adminUsers: (state) => state.users.filter((u) => u.role === 'admin'),
-  },
-
   actions: {
-    authHeader() {
-      const token = localStorage.getItem('token')
-      return {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      }
-    },
-
-    async fetchUsers() {
+    async fetchUsers(filters = {}) {
       this.loading = true
       try {
-        const { data } = await axios.get(`${API_BASE_URL}/api/admin/users/all`, {
-          headers: this.authHeader(),
-        })
+        const params = new URLSearchParams(filters).toString()
+        const { data } = await api.get(`/api/admin/users/all?${params}`)
         this.users = data
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Gagal mengambil data user'
       } finally {
         this.loading = false
       }
     },
 
     async createUser(userData) {
-      this.loading = true
-      try {
-        const { data } = await axios.post(`${API_BASE_URL}/api/admin/users`, userData, {
-          headers: this.authHeader(),
-        })
-        await this.fetchUsers()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal membuat user' }
-      } finally {
-        this.loading = false
-      }
+      const { data } = await api.post('/api/admin/users', userData)
+      await this.fetchUsers()
+      return data
     },
 
     async updateUser(id, payload) {
-      try {
-        const { data } = await axios.put(`${API_BASE_URL}/api/admin/users/${id}`, payload, {
-          headers: this.authHeader(),
-        })
-        await this.fetchUsers()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal update user' }
-      }
+      const { data } = await api.put(`/api/admin/users/${id}`, payload)
+      await this.fetchUsers()
+      return data
     },
 
-    async disableUser(id) {
-      try {
-        const { data } = await axios.patch(
-          `${API_BASE_URL}/api/admin/users/${id}/disable`,
-          {},
-          {
-            headers: this.authHeader(),
-          },
-        )
-        await this.fetchUsers()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal menonaktifkan user' }
-      }
-    },
-
-    async enableUser(id) {
-      try {
-        const { data } = await axios.patch(
-          `${API_BASE_URL}/api/admin/users/${id}/enable`,
-          {},
-          {
-            headers: this.authHeader(),
-          },
-        )
-        await this.fetchUsers()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal mengaktifkan user' }
-      }
+    async toggleUserStatus(id, status) {
+      const action = status ? 'enable' : 'disable'
+      await api.patch(`/api/admin/users/${id}/${action}`)
+      await this.fetchUsers()
     },
 
     async resetPassword(id) {
-      try {
-        const { data } = await axios.patch(
-          `${API_BASE_URL}/api/admin/users/${id}/reset-password`,
-          {},
-          {
-            headers: this.authHeader(),
-          },
-        )
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal reset password' }
-      }
+      const { data } = await api.patch(`/api/admin/users/${id}/reset-password`)
+      return data
     },
 
     async deleteUser(id) {
-      try {
-        const { data } = await axios.delete(`${API_BASE_URL}/api/admin/users/${id}`, {
-          headers: this.authHeader(),
-        })
-        await this.fetchUsers()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal menghapus user' }
-      }
+      await api.delete(`/api/admin/users/${id}`)
+      await this.fetchUsers()
     },
 
-    async fetchOffice() {
-      try {
-        const { data } = await axios.get(`${API_BASE_URL}/api/admin/office`, {
-          headers: this.authHeader(),
-        })
-        return data
-      } catch (error) {
-        console.error('Gagal load office', error)
-        return null
-      }
-    },
-
-    async saveOffice(payload) {
-      this.loading = true
-      try {
-        const { data } = await axios.post(`${API_BASE_URL}/api/admin/office`, payload, {
-          headers: this.authHeader(),
-        })
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal menyimpan kantor' }
-      } finally {
-        this.loading = false
-      }
-    },
-
+    // ================= OFFICE & COMPANY =================
     async fetchCompanies() {
-      this.loading = true
-      try {
-        const { data } = await axios.get(`${API_BASE_URL}/api/admin/companies`, {
-          headers: this.authHeader(),
-        })
-        this.companies = data
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Gagal load companies'
-      } finally {
-        this.loading = false
-      }
+      const { data } = await api.get('/api/admin/companies')
+      this.companies = data
     },
 
     async createCompany(payload) {
-      try {
-        await axios.post(`${API_BASE_URL}/api/admin/create/company`, payload, {
-          headers: this.authHeader(),
-        })
-        await this.fetchCompanies()
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal membuat company' }
-      }
+      await api.post('/api/admin/companies', payload)
+      await this.fetchCompanies()
     },
 
-    async updateCompany(id, payload) {
-      try {
-        await axios.put(`${API_BASE_URL}/api/admin/companies/${id}`, payload, {
-          headers: this.authHeader(),
-        })
-        await this.fetchCompanies()
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal update company' }
-      }
-    },
-
-    async toggleCompanyStatus(id) {
-      try {
-        await axios.patch(
-          `${API_BASE_URL}/api/admin/companies/${id}/status`,
-          {},
-          {
-            headers: this.authHeader(),
-          },
-        )
-        await this.fetchCompanies()
-      } catch (error) {
-        throw error.response?.data
-      }
-    },
-
-    async deleteCompany(id) {
-      try {
-        await axios.delete(`${API_BASE_URL}/api/admin/companies/${id}`, {
-          headers: this.authHeader(),
-        })
-        await this.fetchCompanies()
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal hapus company' }
-      }
-    },
-
-    // --- OFFICE MANAGEMENT ---
-    async fetchOfficeById(companyId) {
-      try {
-        const { data } = await axios.get(`${API_BASE_URL}/api/admin/office/${companyId}`, {
-          headers: this.authHeader(),
-        })
-        return data
-      } catch (error) {
-        console.error('Gagal load office company ini', error)
-        return null
-      }
+    async getOffice(companyId = null) {
+      const url = companyId ? `/api/admin/office/${companyId}` : '/api/admin/office'
+      const { data } = await api.get(url)
+      return data
     },
 
     async saveOffice(payload) {
-      this.loading = true
-      try {
-        const { data } = await axios.post(`${API_BASE_URL}/api/admin/office`, payload, {
-          headers: this.authHeader(),
-        })
-        await this.fetchCompanies()
-        return data
-      } catch (error) {
-        throw error.response?.data || { message: 'Gagal menyimpan kantor' }
-      } finally {
-        this.loading = false
-      }
+      // Payload: { latitude, longitude, radius, address, company_id }
+      const { data } = await api.post('/api/admin/office', payload)
+      return data
+    },
+
+    // ================= LEAVE MANAGEMENT (APPROVAL) =================
+    async fetchAllLeaves(status = '') {
+      const { data } = await api.get(`/api/leaves/all?status=${status}`)
+      this.leaves = data.data || data
+
+      return data
+    },
+
+    async approveLeave(id) {
+      await api.put(`/api/leaves/${id}/approve`)
+      await this.fetchAllLeaves()
+    },
+
+    async rejectLeave(id, note) {
+      await api.put(`/api/leaves/${id}/reject`, { note })
+      await this.fetchAllLeaves()
+    },
+
+    // ================= HOLIDAY MANAGEMENT =================
+    async fetchHolidays() {
+      const { data } = await api.get('/api/holidays')
+      this.holidays = data.data || data
+    },
+
+    async addHoliday(payload) {
+      // Payload: { date, name, description }
+      await api.post('/api/holidays', payload)
+      await this.fetchHolidays()
+    },
+
+    async deleteHoliday(id) {
+      await api.delete(`/api/holidays/${id}`)
+      await this.fetchHolidays()
+    },
+
+    // ================= AUDIT & EXPORT =================
+    async exportDailyData(date) {
+      const response = await api.get(`/api/export/daily/${date}`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `export-daily-${date}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
     },
   },
 })
