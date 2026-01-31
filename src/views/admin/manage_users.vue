@@ -68,8 +68,10 @@ const companies = computed(() => adminStore.companies)
 const filteredUsers = computed(() => {
   let users = adminStore.users
   if (filterRole.value !== 'all') users = users.filter((u) => u.role === filterRole.value)
-  if (filterCompany.value !== 'all')
-    users = users.filter((u) => u.company_id === filterCompany.value)
+  if (filterCompany.value !== 'all') {
+    const companyId = Number(filterCompany.value)
+    users = users.filter((u) => u.company_id === companyId)
+  }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     users = users.filter(
@@ -135,11 +137,13 @@ const openAudit = async (user) => {
 
 const handleExportDaily = async () => {
   const today = new Date().toISOString().split('T')[0]
+
   try {
-    await adminStore.exportDailyData(today)
-    toastRef.value.addToast('Export berhasil didownload', 'success')
+    const rows = await adminStore.exportDailyData(today)
+    console.table(rows)
+    toastRef.value.addToast('Data harian berhasil diambil', 'success')
   } catch (error) {
-    toastRef.value.addToast('Gagal export data', 'error')
+    toastRef.value.addToast('Gagal mengambil data', 'error')
   }
 }
 
@@ -647,7 +651,7 @@ onMounted(() => {
               </div>
               <div>
                 <p class="text-sm font-medium dark:text-gray-200">{{ log.action }}</p>
-                <p class="text-xs text-gray-500">{{ log.details }}</p>
+                <p class="text-xs text-gray-500">{{ log.description }}</p>
               </div>
             </div>
           </div>
