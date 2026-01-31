@@ -7,6 +7,7 @@ export const useAttendanceStore = defineStore('attendance', {
     today: null,
     recap: [],
     loading: false,
+    office: null,
   }),
 
   getters: {
@@ -22,6 +23,16 @@ export const useAttendanceStore = defineStore('attendance', {
         this.today = data.length > 0 ? data[0] : null
       } catch (err) {
         console.error('Gagal cek status absen', err)
+      }
+    },
+
+    async fetchMyOffice() {
+      try {
+        const { data } = await api.get('/api/attendance/me/office')
+        this.office = data.data
+        return data.data
+      } catch (err) {
+        console.error('Gagal load lokasi kantor', err)
       }
     },
 
