@@ -77,6 +77,26 @@ export const useAdminStore = defineStore('admin', {
       await this.fetchCompanies()
     },
 
+    async updateCompany(id, payload) {
+      await api.put(`/api/admin/companies/${id}`, payload)
+      await this.fetchCompanies()
+    },
+
+    async toggleCompanyStatus(id) {
+      const { data } = await api.patch(`/api/admin/companies/${id}/status`)
+      await this.fetchCompanies()
+      return data
+    },
+
+    async deleteCompany(id) {
+      try {
+        await api.delete(`/api/admin/companies/${id}`)
+        await this.fetchCompanies()
+      } catch (error) {
+        throw error
+      }
+    },
+
     async getOffice(companyId = null) {
       const url = companyId ? `/api/admin/office/${companyId}` : '/api/admin/office'
       const { data } = await api.get(url)
@@ -84,9 +104,20 @@ export const useAdminStore = defineStore('admin', {
     },
 
     async saveOffice(payload) {
-      // Payload: { latitude, longitude, radius, address, company_id }
       const { data } = await api.post('/api/admin/office', payload)
+      await this.fetchCompanies()
       return data
+    },
+
+    async toggleOfficeStatus(companyId) {
+      const { data } = await api.patch(`/api/admin/office/${companyId}/status`)
+      await this.fetchCompanies()
+      return data
+    },
+
+    async deleteOffice(companyId) {
+      await api.delete(`/api/admin/office/${companyId}`)
+      await this.fetchCompanies()
     },
 
     // ================= LEAVE MANAGEMENT (APPROVAL) =================
