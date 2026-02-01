@@ -94,30 +94,32 @@ export const useAdminStore = defineStore('admin', {
     // ================= HOLIDAY MANAGEMENT =================
     async fetchHolidays() {
       const { data } = await api.get('/api/holidays')
-      this.holidays = data.data || data
+      const result = data.data || data
+      this.holidays = result
+      return result
     },
 
-    async addHoliday(payload) {
+    async createHoliday(payload) {
       // Payload: { date, name, description }
-      await api.post('/api/holidays', payload)
+      await api.post('/api/holidays/create', payload)
       await this.fetchHolidays()
     },
 
     async deleteHoliday(id) {
-      await api.delete(`/api/holidays/${id}`)
+      await api.delete(`/api/holidays/${id}/delete`)
       await this.fetchHolidays()
     },
 
     // ================= AUDIT & EXPORT =================
     async exportDailyData(date) {
-      const response = await api.get(`/api/export/daily/${date}`, { responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `export-daily-${date}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
+      const { data } = await api.get(`/api/export/daily/${date}`)
+      return data.data || data
+    },
+
+    async fetchUserAuditLogs(id) {
+      const { data } = await api.get(`/api/audit/user/${id}`)
+      console.log(`/api/audit/user/${id}`)
+      return data.data || data
     },
   },
 })
