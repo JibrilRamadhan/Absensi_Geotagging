@@ -100,7 +100,6 @@ export const useAdminStore = defineStore('admin', {
     },
 
     async createHoliday(payload) {
-      // Payload: { date, name, description }
       await api.post('/api/holidays/create', payload)
       await this.fetchHolidays()
     },
@@ -120,6 +119,12 @@ export const useAdminStore = defineStore('admin', {
       const { data } = await api.get(`/api/audit/user/${id}`)
       console.log(`/api/audit/user/${id}`)
       return data.data || data
+    },
+
+    async syncHolidays() {
+      const { data } = await api.post('/api/holidays/sync')
+      await this.fetchHolidays()
+      return data
     },
   },
 })

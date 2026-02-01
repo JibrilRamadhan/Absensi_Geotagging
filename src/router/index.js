@@ -12,6 +12,7 @@ import Manage_users from '../views/admin/manage_users.vue'
 import manage_office from '@/views/admin/manage_office.vue'
 import manage_leaves from '@/views/admin/manage_leaves.vue'
 import manage_holidays from '@/views/admin/manage_holidays.vue'
+import calender from '@/views/user/calender.vue'
 
 const routes = [
   {
@@ -66,6 +67,12 @@ const routes = [
         path: 'dashboard',
         name: 'UserDashboard',
         component: UserDashboard,
+        meta: { role: 'intern' },
+      },
+      {
+        path: 'calender',
+        name: 'UserCalender',
+        component: calender,
         meta: { role: 'intern' },
       },
       {

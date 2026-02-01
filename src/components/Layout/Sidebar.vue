@@ -17,6 +17,7 @@ import {
   UserCircle,
   Users,
   Settings,
+  Calendar,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -41,6 +42,7 @@ const menuItems = computed(() => {
       { icon: 'LayoutDashboard', label: 'Home Dashboard', path: '/dashboard' },
       { icon: 'UserCircle', label: 'My Profile', path: '/profile' },
       { icon: 'ClipboardList', label: 'My Leaves', path: '/leaves' },
+      { icon: 'Calendar', label: 'Calendar', path: '/calender' },
     ]
   }
 })
