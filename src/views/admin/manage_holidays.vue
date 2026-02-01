@@ -2,12 +2,26 @@
 import { ref, onMounted } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
-import { Calendar, Trash2, Plus } from 'lucide-vue-next'
+import { Calendar, Trash2, Plus, RefreshCw, CloudDownloadIcon } from 'lucide-vue-next'
 
 const adminStore = useAdminStore()
 const toastRef = ref(null)
 const holidays = ref([])
 const newHoliday = ref({ name: '', date: '' })
+const isSyncing = ref(false)
+
+const handleSync = async () => {
+  if (isSyncing.value) return
+  isSyncing.value = true
+  try {
+    const res = await adminStore.syncHolidays()
+    toastRef.value.addToast(res.message, 'success')
+  } catch (e) {
+    toastRef.value.addToast('Gagal sinkronisasi', 'error')
+  } finally {
+    isSyncing.value = false
+  }
+}
 
 const fetchHolidays = async () => {
   try {
@@ -47,6 +61,15 @@ onMounted(fetchHolidays)
   <div class="p-6 space-y-6 min-h-screen bg-gray-50 dark:bg-zinc-950 font-sans">
     <Toast ref="toastRef" />
     <h1 class="text-3xl font-bold dark:text-white">Manage Holidays</h1>
+
+    <button
+      @click="handleSync"
+      :disabled="isSyncing"
+      class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <RefreshCw :class="{ 'animate-spin': isSyncing }" size="18" />
+      <span>{{ isSyncing ? 'Mengambil Data...' : 'Sync Nasional' }}</span>
+    </button>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <!-- Form Tambah -->

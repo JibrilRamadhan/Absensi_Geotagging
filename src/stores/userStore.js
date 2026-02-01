@@ -6,6 +6,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 export const useUserStore = defineStore('user', {
   state: () => ({
     leaves: [],
+    holidays: [],
     loading: false,
     error: null,
   }),
@@ -23,6 +24,20 @@ export const useUserStore = defineStore('user', {
           headers: this.getHeader(),
         })
         this.leaves = data.data || data
+      } catch (err) {
+        console.error(err)
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async fetchHolidays() {
+      this.loading = true
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/api/holidays`, {
+          headers: this.getHeader(),
+        })
+        this.holidays = data.data || data
       } catch (err) {
         console.error(err)
       } finally {

@@ -4,6 +4,21 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
 import SidebarItem from './SidebarItem.vue'
+import {
+  ChevronLeft,
+  Sun,
+  Moon,
+  MapPinHouse,
+  LogOut,
+  LayoutDashboard,
+  ClipboardList,
+  FileClock,
+  MapPin,
+  UserCircle,
+  Users,
+  Settings,
+  Calendar,
+} from 'lucide-vue-next'
 import { ChevronLeft, Sun, Moon } from 'lucide-vue-next'
 import ConfirmModal from '../Modal/ConfirmModal.vue'
 
@@ -31,6 +46,7 @@ const menuItems = computed(() => {
       { icon: 'LayoutDashboard', label: 'Home Dashboard', path: '/dashboard' },
       { icon: 'UserCircle', label: 'My Profile', path: '/profile' },
       { icon: 'ClipboardList', label: 'My Leaves', path: '/leaves' },
+      { icon: 'Calendar', label: 'Calendar', path: '/calender' },
     ]
   }
 })
