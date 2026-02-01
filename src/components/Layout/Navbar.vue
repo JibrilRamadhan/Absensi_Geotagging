@@ -12,12 +12,13 @@ import {
 } from 'lucide-vue-next'
 import api from '../../api/axios'
 import { useRouter } from 'vue-router'
+import { useThemeStore } from '../../stores/themeStore'
 
 const router = useRouter()
+const themeStore = useThemeStore()
 
 const user = ref(null)
 const showDropdown = ref(false)
-const isDarkMode = ref(false)
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL
 
@@ -48,11 +49,6 @@ const fetchProfile = async () => {
 const logout = () => {
   localStorage.removeItem('token')
   router.push('/login')
-}
-
-const toggleTheme = () => {
-  isDarkMode.value = !isDarkMode.value
-  document.documentElement.classList.toggle('dark')
 }
 
 onMounted(() => {
@@ -98,16 +94,16 @@ onUnmounted(() => {
     <div class="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-center md:justify-end">
       <div class="hidden sm:flex bg-white dark:bg-zinc-900 rounded-full p-1 shadow-sm items-center">
         <button
-          @click="toggleTheme"
+          @click="themeStore.toggleTheme()"
           class="p-1.5 rounded-full transition-all"
-          :class="!isDarkMode ? 'bg-black text-white' : 'text-gray-400'"
+          :class="!themeStore.isDarkMode ? 'bg-black text-white' : 'text-gray-400'"
         >
           <Sun size="18" />
         </button>
         <button
-          @click="toggleTheme"
+          @click="themeStore.toggleTheme()"
           class="p-1.5 rounded-full transition-all"
-          :class="isDarkMode ? 'bg-white text-black' : 'text-gray-400'"
+          :class="themeStore.isDarkMode ? 'bg-white text-black' : 'text-gray-400'"
         >
           <Moon size="18" />
         </button>

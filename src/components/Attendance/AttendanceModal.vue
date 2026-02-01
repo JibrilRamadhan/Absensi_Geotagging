@@ -1,12 +1,25 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { Camera, X, RefreshCcw, CheckCircle2, Loader2, AlertTriangle, Clock } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted, computed, watchEffect } from 'vue'
+import {
+  Camera,
+  X,
+  RefreshCcw,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  MapPin,
+  Satellite,
+  Wifi,
+} from 'lucide-vue-next'
 import { useAttendanceStore } from '../../stores/attendanceStore'
+import { useLocationStore } from '../../stores/locationStore'
 
-const props = defineProps(['type', 'initialLocation', 'initialAccuracy'])
+const props = defineProps(['type']) // Kita ambil lokasi dari Store, bukan props lagi
 const emit = defineEmits(['close', 'success', 'error'])
 
 const attendanceStore = useAttendanceStore()
+const locationStore = useLocationStore() // Import Store Global
+
 const videoEl = ref(null)
 const canvasEl = ref(null)
 
@@ -14,21 +27,58 @@ const isCameraReady = ref(false)
 const photoTaken = ref(null)
 const photoBlob = ref(null)
 
-const location = ref(null)
-const accuracy = ref(null)
-const locationError = ref(null)
-const watchId = ref(null)
-
 const isSubmitting = ref(false)
-const currentTime = ref(
-  new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-)
+const distanceToOffice = ref(0)
+const isWithinRadius = ref(false)
 
-const MAX_ACCURACY_ALLOWED = 500
+// --- 1. AMBIL DATA LOKASI INSTANT DARI STORE ---
+const liveLocation = computed(() => {
+  if (locationStore.coords.latitude) {
+    return {
+      latitude: locationStore.coords.latitude,
+      longitude: locationStore.coords.longitude,
+    }
+  }
+  return null
+})
 
-const timeInterval = ref(null)
+const liveAccuracy = computed(() => locationStore.accuracy)
+const signalSource = computed(() => {
+  return locationStore.satelliteReady || (locationStore.accuracy && locationStore.accuracy <= 20)
+    ? 'satelit'
+    : 'wifi'
+})
 
-// --- CAMERA LOGIC ---
+// --- 2. LOGIKA JARAK (Haversine) ---
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3
+  const φ1 = (lat1 * Math.PI) / 180
+  const φ2 = (lat2 * Math.PI) / 180
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return Math.round(R * c)
+}
+
+// Watcher Jarak Realtime
+watchEffect(() => {
+  if (liveLocation.value && attendanceStore.office) {
+    const dist = calculateDistance(
+      liveLocation.value.latitude,
+      liveLocation.value.longitude,
+      parseFloat(attendanceStore.office.latitude),
+      parseFloat(attendanceStore.office.longitude),
+    )
+    distanceToOffice.value = dist
+    const maxRadius = parseFloat(attendanceStore.office.radius)
+    isWithinRadius.value = dist <= maxRadius
+  }
+})
+
+// --- 3. CAMERA LOGIC (Sama seperti sebelumnya) ---
 const startCamera = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -58,17 +108,13 @@ const stopCamera = () => {
 const takePhoto = () => {
   const video = videoEl.value
   const canvas = canvasEl.value
-
   if (video && canvas) {
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     const context = canvas.getContext('2d')
-
     context.translate(canvas.width, 0)
     context.scale(-1, 1)
-
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
-
     canvas.toBlob(
       (blob) => {
         photoBlob.value = blob
@@ -83,86 +129,34 @@ const takePhoto = () => {
 const retakePhoto = () => {
   photoTaken.value = null
   photoBlob.value = null
-  if (!watchId.value) startLocationWatch()
 }
 
-// --- LOCATION LOGIC ---
-const startLocationWatch = () => {
-  if (!navigator.geolocation) {
-    locationError.value = 'Browser tidak mendukung Geolocation.'
-    return
-  }
-
-  locationError.value = null
-
-  watchId.value = navigator.geolocation.watchPosition(
-    (pos) => {
-      location.value = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      }
-      accuracy.value = Math.round(pos.coords.accuracy)
-    },
-    (err) => {
-      console.error('Geo Error:', err)
-      let msg = 'Gagal mengambil lokasi.'
-      if (err.code === 1) msg = 'Izin lokasi ditolak.'
-      else if (err.code === 2) msg = 'Sinyal GPS lemah/tidak tersedia.'
-      else if (err.code === 3) msg = 'Waktu permintaan habis.'
-      locationError.value = msg
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 20000,
-      maximumAge: 0,
-    },
-  )
-}
-
-const stopLocationWatch = () => {
-  if (watchId.value !== null) {
-    navigator.geolocation.clearWatch(watchId.value)
-    watchId.value = null
-  }
-}
-
-// --- COMPUTED ---
-const isLocationValid = computed(() => {
-  return location.value && accuracy.value !== null && accuracy.value <= MAX_ACCURACY_ALLOWED
-})
-
-const gpsStatusColor = computed(() => {
-  if (!location.value) return 'text-amber-400'
-  if (accuracy.value <= 100) return 'text-emerald-400'
-  if (accuracy.value <= 300) return 'text-blue-400'
-  if (accuracy.value <= 500) return 'text-yellow-400'
-  return 'text-red-400'
-})
-
-const gpsStatusText = computed(() => {
-  if (!location.value) return 'Mencari GPS...'
-  if (accuracy.value <= 100) return 'Excellent'
-  if (accuracy.value <= 300) return 'Good'
-  if (accuracy.value <= 500) return 'Fair'
-  return 'Poor'
-})
-
-// --- SUBMIT LOGIC ---
+// --- 4. SUBMIT LOGIC ---
 const handleSubmit = async () => {
-  if (!photoBlob.value || !location.value) return
+  if (!photoBlob.value || !liveLocation.value) return
 
-  if (accuracy.value > MAX_ACCURACY_ALLOWED) {
-    emit('error', `Akurasi GPS buruk (${accuracy.value}m). Tunggu sinyal membaik.`)
+  // Validasi Radius (Hanya untuk Check-IN)
+  if (!isWithinRadius.value && props.type === 'IN') {
+    emit('error', `Jarak terlalu jauh (${distanceToOffice.value}m). Harap mendekat ke kantor.`)
     return
   }
 
   isSubmitting.value = true
   try {
-    const res = await attendanceStore.submitAttendance(props.type, photoBlob.value, location.value)
-    emit('success', res.message)
+    const payload = {
+      type: props.type,
+      latitude: liveLocation.value.latitude,
+      longitude: liveLocation.value.longitude,
+      accuracy: liveAccuracy.value,
+      provider: signalSource.value,
+    }
+    // Kirim Foto + Lokasi ke Store
+    const res = await attendanceStore.submitAttendanceWithPhoto(payload, photoBlob.value)
+
+    emit('success', res.message || 'Absensi Berhasil')
     emit('close')
   } catch (err) {
-    emit('error', err.message)
+    emit('error', err.message || 'Gagal memproses absensi')
   } finally {
     isSubmitting.value = false
   }
@@ -170,29 +164,11 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   startCamera()
-
-  timeInterval.value = setInterval(() => {
-    currentTime.value = new Date().toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }, 1000)
-
-  if (props.initialLocation && props.initialAccuracy) {
-    location.value = {
-      latitude: props.initialLocation[0],
-      longitude: props.initialLocation[1],
-    }
-    accuracy.value = props.initialAccuracy
-  }
-
-  startLocationWatch()
+  // Lokasi sudah otomatis jalan dari Store, tidak perlu startLocationWatch manual
 })
 
 onUnmounted(() => {
   stopCamera()
-  stopLocationWatch()
-  if (timeInterval.value) clearInterval(timeInterval.value)
 })
 </script>
 
@@ -200,55 +176,40 @@ onUnmounted(() => {
   <div
     class="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-300"
   >
-    <div
-      class="absolute inset-0 bg-black/70 dark:bg-black/80 backdrop-blur-md"
-      @click="emit('close')"
-    ></div>
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-md" @click="emit('close')"></div>
 
     <div
-      class="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-500"
+      class="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-500 flex flex-col max-h-[90vh]"
     >
-      <!-- Compact Header -->
-      <div class="relative overflow-hidden">
-        <div
-          class="absolute inset-0"
-          :class="
-            props.type === 'IN'
-              ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
-              : 'bg-gradient-to-br from-orange-500 to-rose-600'
-          "
-        ></div>
-
-        <div class="relative p-4 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div
-              class="size-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center"
-            >
-              <CheckCircle2 v-if="props.type === 'IN'" class="text-white" size="20" />
-              <RefreshCcw v-else class="text-white" size="20" />
-            </div>
-            <div>
-              <h2 class="text-lg font-black text-white">
-                {{ props.type === 'IN' ? 'Check In' : 'Check Out' }}
-              </h2>
-              <div class="flex items-center gap-1.5 text-white/90">
-                <Clock size="12" />
-                <span class="text-xs font-bold tabular-nums">{{ currentTime }}</span>
-              </div>
-            </div>
-          </div>
-
-          <button
-            @click="emit('close')"
-            class="size-8 rounded-lg bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-all hover:scale-110 hover:rotate-90"
+      <div
+        class="relative p-4 flex items-center justify-between border-b dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm z-20"
+      >
+        <div class="flex items-center gap-3">
+          <div
+            class="size-10 rounded-xl flex items-center justify-center shadow-lg"
+            :class="props.type === 'IN' ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'"
           >
-            <X size="18" />
-          </button>
+            <CheckCircle2 v-if="props.type === 'IN'" size="20" />
+            <RefreshCcw v-else size="20" />
+          </div>
+          <div>
+            <h2 class="text-lg font-black text-gray-900 dark:text-white leading-tight">
+              {{ props.type === 'IN' ? 'Check In' : 'Check Out' }}
+            </h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Ambil foto selfie bukti kehadiran
+            </p>
+          </div>
         </div>
+        <button
+          @click="emit('close')"
+          class="size-8 rounded-full bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 flex items-center justify-center transition"
+        >
+          <X size="18" class="text-gray-600 dark:text-gray-300" />
+        </button>
       </div>
 
-      <!-- Camera Section -->
-      <div class="relative bg-slate-900 dark:bg-black aspect-square w-full overflow-hidden">
+      <div class="relative w-full aspect-[4/5] bg-black overflow-hidden group">
         <video
           v-show="!photoTaken"
           ref="videoEl"
@@ -258,90 +219,64 @@ onUnmounted(() => {
         ></video>
 
         <div v-if="photoTaken" class="w-full h-full">
-          <img
-            :src="photoTaken"
-            class="w-full h-full object-cover animate-in fade-in duration-500"
-          />
+          <img :src="photoTaken" class="w-full h-full object-cover animate-in fade-in" />
         </div>
 
         <canvas ref="canvasEl" class="hidden"></canvas>
 
-        <!-- Compact GPS Badge -->
-        <div class="absolute top-3 left-3 right-3 z-10">
-          <div
-            class="bg-slate-900/90 dark:bg-black/90 backdrop-blur-xl rounded-xl px-3 py-2 border border-white/10 flex items-center justify-between"
-          >
-            <div class="flex items-center gap-2">
-              <div
-                class="size-2 rounded-full animate-pulse"
-                :class="
-                  !location
-                    ? 'bg-amber-400'
-                    : accuracy <= MAX_ACCURACY_ALLOWED
-                      ? 'bg-emerald-400'
-                      : 'bg-red-400'
-                "
-              ></div>
-              <div>
-                <p class="text-[10px] font-bold text-slate-400 uppercase">GPS</p>
-                <p v-if="locationError" class="text-xs font-bold text-red-400">Error</p>
-                <p v-else-if="!location" class="text-xs font-bold text-amber-400">Mencari...</p>
-                <p v-else class="text-xs font-bold" :class="gpsStatusColor">
-                  {{ accuracy }}m • {{ gpsStatusText }}
-                </p>
-              </div>
-            </div>
-
-            <span
-              v-if="location"
-              class="text-[9px] font-bold px-2 py-1 rounded-md uppercase"
-              :class="
-                accuracy <= MAX_ACCURACY_ALLOWED
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-              "
-            >
-              {{ accuracy <= MAX_ACCURACY_ALLOWED ? 'Ready' : 'Wait' }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Simple Frame Guide -->
         <div
           v-if="!photoTaken"
-          class="absolute inset-0 flex items-center justify-center pointer-events-none"
+          class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"
         >
-          <div class="relative w-56 h-56 border-2 border-white/30 rounded-3xl">
-            <div
-              class="absolute -top-1 -left-1 w-8 h-8 border-l-4 border-t-4 border-white rounded-tl-2xl"
-            ></div>
-            <div
-              class="absolute -top-1 -right-1 w-8 h-8 border-r-4 border-t-4 border-white rounded-tr-2xl"
-            ></div>
-            <div
-              class="absolute -bottom-1 -left-1 w-8 h-8 border-l-4 border-b-4 border-white rounded-bl-2xl"
-            ></div>
-            <div
-              class="absolute -bottom-1 -right-1 w-8 h-8 border-r-4 border-b-4 border-white rounded-br-2xl"
-            ></div>
+          <div class="w-48 h-64 border-2 border-dashed border-white/50 rounded-3xl"></div>
+        </div>
+
+        <div class="absolute top-3 left-3 right-3 flex justify-between items-start">
+          <div
+            class="bg-black/60 backdrop-blur-md rounded-lg px-3 py-1.5 flex items-center gap-2 border border-white/10"
+          >
+            <MapPin size="12" class="text-white" />
+            <span
+              class="text-xs font-bold font-mono"
+              :class="isWithinRadius ? 'text-emerald-400' : 'text-rose-400'"
+            >
+              {{ distanceToOffice }}m
+            </span>
+          </div>
+
+          <div
+            class="bg-black/60 backdrop-blur-md rounded-lg px-2 py-1.5 flex items-center gap-1.5 border border-white/10"
+          >
+            <Satellite
+              v-if="signalSource === 'satelit'"
+              size="12"
+              class="text-indigo-400 animate-pulse"
+            />
+            <Wifi v-else size="12" class="text-orange-400" />
+            <span class="text-[10px] font-bold text-white uppercase">{{
+              signalSource === 'satelit' ? 'GPS' : 'WIFI'
+            }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Compact Footer -->
-      <div class="p-4 bg-slate-50 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800">
-        <!-- Simple Info -->
-        <p class="text-center text-xs text-slate-600 dark:text-zinc-400 mb-3">
-          {{ photoTaken ? 'Periksa foto & kirim' : 'Posisikan wajah Anda' }}
-        </p>
+      <div class="p-4 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800">
+        <div
+          v-if="!isWithinRadius && props.type === 'IN'"
+          class="mb-3 flex items-center gap-2 p-2.5 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-xl"
+        >
+          <AlertTriangle class="w-4 h-4 text-rose-500 flex-shrink-0" />
+          <p class="text-xs font-medium text-rose-600 dark:text-rose-300 leading-tight">
+            Anda berada di luar jangkauan kantor (Max {{ attendanceStore.office?.radius }}m).
+          </p>
+        </div>
 
-        <!-- Buttons -->
-        <div class="flex gap-2">
+        <div class="flex gap-3">
           <button
             v-if="!photoTaken"
             @click="takePhoto"
             :disabled="!isCameraReady"
-            class="group w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
+            class="w-full py-3.5 bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-black font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-xl"
           >
             <Camera size="18" />
             <span>Ambil Foto</span>
@@ -350,40 +285,29 @@ onUnmounted(() => {
           <template v-else>
             <button
               @click="retakePhoto"
-              class="flex-1 py-3 bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95"
+              class="flex-1 py-3.5 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
             >
-              <RefreshCcw size="16" />
-              Ulang
+              <RefreshCcw size="18" />
+              <span class="text-sm">Ulang</span>
             </button>
 
             <button
               @click="handleSubmit"
-              :disabled="isSubmitting || !isLocationValid"
-              class="flex-[2] py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+              :disabled="isSubmitting || (!isWithinRadius && props.type === 'IN')"
+              class="flex-[2] py-3.5 font-bold rounded-xl flex items-center justify-center gap-2 text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:shadow-none"
               :class="
-                isLocationValid
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/30'
-                  : 'bg-slate-400 dark:bg-zinc-700 text-slate-200 dark:text-zinc-500 cursor-not-allowed'
+                props.type === 'IN'
+                  ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'
+                  : 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/20'
               "
             >
               <Loader2 v-if="isSubmitting" size="18" class="animate-spin" />
               <template v-else>
                 <CheckCircle2 size="18" />
-                Kirim
+                <span>{{ props.type === 'IN' ? 'Absen Masuk' : 'Absen Pulang' }}</span>
               </template>
             </button>
           </template>
-        </div>
-
-        <!-- Compact Warning -->
-        <div
-          v-if="photoTaken && !isLocationValid"
-          class="mt-3 flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg"
-        >
-          <AlertTriangle class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-          <p class="text-[10px] font-semibold text-amber-900 dark:text-amber-300">
-            Menunggu sinyal GPS lebih baik
-          </p>
         </div>
       </div>
     </div>
@@ -391,8 +315,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-* {
-  transition-property: transform, opacity, color, background-color, border-color, box-shadow;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+/* Transisi Halus */
+.animate-in {
+  animation-duration: 0.3s;
+  animation-fill-mode: both;
 }
 </style>

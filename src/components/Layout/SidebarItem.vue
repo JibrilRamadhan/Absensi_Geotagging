@@ -19,8 +19,8 @@ const IconComponent = computed(() => Icons[props.icon])
       'group flex items-center h-11 rounded-xl transition-all duration-200 p-4',
       collapsed ? 'justify-center' : 'px-3 gap-3',
       active
-        ? 'bg-orange-50 text-orange-500 dark:bg-orange-500/10'
-        : 'text-gray-600 hover:bg-gray-100 dark:text-zinc-400 dark:hover:bg-zinc-800',
+        ? 'bg-indigo-50 text-indigo-600 dark:bg-white/10 dark:text-white dark:shadow-[0_0_15px_rgba(255,255,255,0.15)]'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-white/5 dark:hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]',
     ]"
   >
     <component :is="IconComponent" size="18" class="shrink-0" />

@@ -261,7 +261,7 @@ onUnmounted(() => {
           <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6">Persentase Kehadiran</h3>
           <div
             v-if="isLoading"
-            class="h-[280px] bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
+            class="h-70 bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
           ></div>
           <div v-else ref="attendanceChartEl"></div>
         </div>
@@ -274,7 +274,7 @@ onUnmounted(() => {
           </h3>
           <div
             v-if="isLoading"
-            class="h-[280px] bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
+            class="h-70 bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
           ></div>
           <div v-else ref="companyChartEl"></div>
         </div>
@@ -372,7 +372,7 @@ onUnmounted(() => {
                   <td class="px-6 py-4 hidden md:table-cell">
                     <div class="flex items-center gap-2 text-sm text-gray-500">
                       <Building2 size="14" class="text-indigo-500" />
-                      <span class="truncate max-w-[150px]">{{ user.company_name || 'N/A' }}</span>
+                      <span class="truncate max-w-37.5">{{ user.company_name || 'N/A' }}</span>
                     </div>
                   </td>
                   <td class="px-6 py-4 text-center">

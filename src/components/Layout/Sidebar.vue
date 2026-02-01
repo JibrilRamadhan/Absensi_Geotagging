@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/authStore'
+import { useThemeStore } from '../../stores/themeStore'
 import SidebarItem from './SidebarItem.vue'
 import {
   ChevronLeft,
@@ -21,13 +22,9 @@ import {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const collapsed = ref(false)
-const darkMode = ref(false)
 const userRole = computed(() => authStore.user?.role)
-
-onMounted(() => {
-  darkMode.value = document.documentElement.classList.contains('dark')
-})
 
 const menuItems = computed(() => {
   if (userRole.value === 'admin') {
@@ -48,19 +45,6 @@ const menuItems = computed(() => {
   }
 })
 
-const toggleTheme = () => {
-  const html = document.documentElement
-  if (html.classList.contains('dark')) {
-    html.classList.remove('dark')
-    darkMode.value = false
-    localStorage.setItem('theme', 'light')
-  } else {
-    html.classList.add('dark')
-    darkMode.value = true
-    localStorage.setItem('theme', 'dark')
-  }
-}
-
 const handleLogout = () => {
   if (confirm('Apakah Anda yakin ingin keluar?')) {
     authStore.logout()
@@ -73,7 +57,7 @@ const handleLogout = () => {
   <aside
     :class="[
       'relative z-30 h-screen shrink-0 flex flex-col border-r transition-all duration-300 ease-in-out font-sans',
-      collapsed ? 'w-[84px]' : 'w-[280px]',
+      collapsed ? 'w-21' : 'w-70',
       'bg-white dark:bg-zinc-900 dark:border-zinc-800 border-gray-100',
     ]"
   >
@@ -121,29 +105,29 @@ const handleLogout = () => {
           @click="router.push(item.path)"
         />
 
-        <div
+        <!-- <div
           v-if="userRole !== 'admin' && !collapsed"
-          class="mt-4 mx-2 p-5 rounded-3xl bg-gradient-to-b from-orange-400 to-orange-600 text-white"
+          class="mt-4 mx-2 p-5 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20"
         >
           <p class="text-[10px] opacity-80">Today's Work</p>
           <h4 class="text-xl font-bold">08h : 45m</h4>
           <button
-            class="mt-3 w-full py-2 bg-white text-orange-600 rounded-xl text-[10px] font-bold"
+            class="mt-3 w-full py-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl text-[10px] font-bold hover:bg-white/20 transition"
           >
             Check Out
           </button>
-        </div>
+        </div> -->
       </nav>
 
       <div class="px-4 pb-6 space-y-2">
-        <div class="h-[1px] bg-gray-100 dark:bg-zinc-800 mx-2 mb-4"></div>
+        <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-2 mb-4"></div>
         <SidebarItem icon="Settings" label="Settings" :collapsed="collapsed" />
 
         <button
-          @click="toggleTheme"
+          @click="themeStore.toggleTheme()"
           class="flex items-center h-11 w-full rounded-xl px-3 gap-3 text-gray-500 hover:bg-gray-100 dark:text-zinc-400 dark:hover:bg-zinc-800 transition"
         >
-          <Sun v-if="darkMode" size="20" class="text-orange-400" />
+          <Sun v-if="themeStore.isDarkMode" size="20" class="text-orange-400" />
           <Moon v-else size="20" />
           <span v-show="!collapsed" class="text-sm font-medium">Theme</span>
         </button>

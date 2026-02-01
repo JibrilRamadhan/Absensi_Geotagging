@@ -1,8 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import AttendanceModal from '../../components/Attendance/AttendanceModal.vue'
 import { useAttendanceStore } from '../../stores/attendanceStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useLocationStore } from '../../stores/locationStore'
+import { useThemeStore } from '../../stores/themeStore'
 import Toast from '../../components/Allert/allert.vue'
 import {
   Users,
@@ -25,22 +27,27 @@ import { LMap, LTileLayer, LMarker, LTooltip, LCircle, LPopup } from '@vue-leafl
 
 const attendanceStore = useAttendanceStore()
 const authStore = useAuthStore()
+const locationStore = useLocationStore()
+const themeStore = useThemeStore()
 const toastRef = ref(null)
-const gpsAccuracy = ref(0)
-const watchId = ref(null)
 const mapRef = ref(null)
 const zoom = ref(16)
 const isMounted = ref(false)
-const userLocation = ref(null)
 const officeLocation = ref(null)
 const officeRadius = ref(100)
-const gpsLoading = ref(true)
+
+const userLocation = computed(() => {
+  if (locationStore.coords.latitude && locationStore.coords.longitude) {
+    return [locationStore.coords.latitude, locationStore.coords.longitude]
+  }
+  return null
+})
+const gpsAccuracy = computed(() => locationStore.accuracy)
+const gpsLoading = computed(() => !locationStore.isReady)
 
 const showAttendanceModal = ref(false)
 const attendanceType = ref('IN')
-const isDarkMode = ref(false) // Deteksi dark mode untuk Map
 
-// --- LOGIC MAP & GPS ---
 const mapOptions = {
   zoomControl: false,
   attributionControl: false,
@@ -49,40 +56,11 @@ const mapOptions = {
   doubleClickZoom: true,
 }
 
-// Deteksi perubahan tema browser/sistem untuk mengganti Tile Map
-const updateTheme = () => {
-  isDarkMode.value = document.documentElement.classList.contains('dark')
-}
-
-// Tile Layer URL yang berubah sesuai tema
 const tileLayerUrl = computed(() => {
-  return isDarkMode.value
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' // Peta Gelap Premium
-    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' // Peta Terang
+  return themeStore.isDarkMode
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
 })
-
-const getUserLocation = () => {
-  gpsLoading.value = true
-  if (navigator.geolocation) {
-    watchId.value = navigator.geolocation.watchPosition(
-      (pos) => {
-        userLocation.value = [pos.coords.latitude, pos.coords.longitude]
-        gpsAccuracy.value = Math.round(pos.coords.accuracy)
-        gpsLoading.value = false
-        if (!isMounted.value) fitMapBounds()
-      },
-      (err) => {
-        console.error(err)
-        toastRef.value?.addToast('Gagal update lokasi GPS', 'error')
-        gpsLoading.value = false
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
-    )
-  } else {
-    toastRef.value?.addToast('Browser tidak support GPS', 'error')
-    gpsLoading.value = false
-  }
-}
 
 const fitMapBounds = () => {
   if (userLocation.value && officeLocation.value && mapRef.value) {
@@ -93,6 +71,14 @@ const fitMapBounds = () => {
     }, 500)
   }
 }
+
+const hasFittedMap = ref(false)
+watch([userLocation, officeLocation], ([uLoc, oLoc]) => {
+  if (uLoc && oLoc && !hasFittedMap.value) {
+    fitMapBounds()
+    hasFittedMap.value = true
+  }
+})
 
 watch(
   () => attendanceStore.office,
@@ -206,11 +192,6 @@ const handleError = (msg) => toastRef.value.addToast(msg, 'error')
 
 onMounted(async () => {
   isMounted.value = true
-  updateTheme()
-
-  // Observer untuk mendeteksi perubahan class 'dark' di html
-  const observer = new MutationObserver(updateTheme)
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 
   setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString('id-ID', {
@@ -233,12 +214,6 @@ onMounted(async () => {
     ]
     officeRadius.value = parseFloat(attendanceStore.office.radius)
   }
-
-  getUserLocation()
-})
-
-onUnmounted(() => {
-  if (watchId.value !== null) navigator.geolocation.clearWatch(watchId.value)
 })
 </script>
 
@@ -315,10 +290,10 @@ onUnmounted(() => {
             <button
               @click="openAttendance('IN')"
               :disabled="!canCheckIn"
-              class="group relative overflow-hidden rounded-[2rem] p-8 text-left transition-all duration-300 border"
+              class="group relative overflow-hidden rounded-4xl p-8 text-left transition-all duration-300 border"
               :class="
                 canCheckIn
-                  ? 'border-transparent bg-gradient-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/20 hover:shadow-2xl hover:shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99]'
+                  ? 'border-transparent bg-linear-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/20 hover:shadow-2xl hover:shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99]'
                   : 'border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-zinc-900 opacity-100 cursor-not-allowed'
               "
             >
@@ -380,7 +355,7 @@ onUnmounted(() => {
                 class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
               >
                 <div
-                  class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"
+                  class="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"
                 ></div>
               </div>
             </button>
@@ -750,8 +725,6 @@ onUnmounted(() => {
     <AttendanceModal
       v-if="showAttendanceModal"
       :type="attendanceType"
-      :initial-location="userLocation"
-      :initial-accuracy="gpsAccuracy"
       @close="showAttendanceModal = false"
       @success="handleSuccess"
       @error="handleError"
