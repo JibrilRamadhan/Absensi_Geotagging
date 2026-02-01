@@ -1,9 +1,19 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { ChevronRight, LogOut, User, Sun, Moon } from 'lucide-vue-next'
+import {
+  Search,
+  Bell,
+  ChevronRight,
+  LogOut,
+  User,
+  SlidersHorizontal,
+  Sun,
+  Moon,
+} from 'lucide-vue-next'
 import api from '../../api/axios'
 import { useRouter } from 'vue-router'
 import { useThemeStore } from '../../stores/themeStore'
+import ConfirmModal from '@/components/Modal/ConfirmModal.vue'
 
 const router = useRouter()
 const themeStore = useThemeStore()
@@ -11,30 +21,21 @@ const themeStore = useThemeStore()
 const user = ref(null)
 const showDropdown = ref(false)
 
-// logout modal state
-const showLogoutModal = ref(false)
-const logoutLoading = ref(false)
-
 const API_BASE = import.meta.env.VITE_API_BASE_URL
 
-const currentDate = computed(() =>
-  new Date().toLocaleDateString('en-GB', {
+const currentDate = computed(() => {
+  return new Date().toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }),
-)
+  })
+})
 
 const profileImage = computed(() => {
   if (!user.value?.profile_picture) {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(user.value?.name || 'User')}`
+    return `https://ui-avatars.com/api/?name=${user.value?.name || 'User'}&background=random`
   }
-
-  if (user.value.profile_picture.startsWith('http')) {
-    return user.value.profile_picture
-  }
-
-  return `${API_BASE.replace(/\/$/, '')}/${user.value.profile_picture.replace(/^\//, '')}`
+  return `${API_BASE}${user.value.profile_picture}`
 })
 
 const fetchProfile = async () => {
@@ -46,6 +47,9 @@ const fetchProfile = async () => {
   }
 }
 
+const showLogoutModal = ref(false)
+const logoutLoading = ref(false)
+
 const openLogoutModal = () => {
   showDropdown.value = false
   showLogoutModal.value = true
@@ -55,28 +59,18 @@ const confirmLogout = async () => {
   logoutLoading.value = true
   try {
     localStorage.removeItem('token')
-    router.replace('/login')
+    window.location.href = '/login'
   } finally {
     logoutLoading.value = false
-    showLogoutModal.value = false
-  }
-}
-
-// click outside dropdown
-const handleClickOutside = (e) => {
-  if (!e.target.closest('.profile-dropdown')) {
-    showDropdown.value = false
   }
 }
 
 onMounted(() => {
   fetchProfile()
-  document.addEventListener('click', handleClickOutside)
   window.addEventListener('profile-updated', fetchProfile)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('profile-updated', fetchProfile)
 })
 </script>
@@ -89,27 +83,6 @@ onUnmounted(() => {
       <h1 class="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">Dashboard</h1>
       <p class="text-sm text-gray-400 font-medium mt-1">{{ currentDate }}</p>
     </div>
-
-    <!-- <div class="flex items-center gap-3 w-full md:max-w-md lg:max-w-lg mx-auto md:px-6">
-      <div class="relative flex-1 group">
-        <Search
-          class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors"
-          size="20"
-        />
-        <input
-          type="text"
-          placeholder="Search anything"
-          class="w-full h-12 pl-12 pr-4 rounded-full bg-white dark:bg-zinc-900 border-none outline-none text-sm text-gray-600 dark:text-gray-200 placeholder-gray-400 shadow-sm focus:ring-2 focus:ring-orange-100 transition-all"
-        />
-      </div>
-
-      <button
-        class="size-12 shrink-0 rounded-full bg-white dark:bg-zinc-900 flex items-center justify-center shadow-sm hover:shadow-md hover:bg-gray-50 transition text-gray-500 dark:text-zinc-400"
-        title="Settings"
-      >
-        <SlidersHorizontal size="20" />
-      </button>
-    </div> -->
 
     <div class="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-center md:justify-end">
       <div class="hidden sm:flex bg-white dark:bg-zinc-900 rounded-full p-1 shadow-sm items-center">
@@ -129,16 +102,7 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- <button
-        class="relative size-12 flex items-center justify-center bg-white dark:bg-zinc-900 rounded-full shadow-sm hover:shadow-md transition text-gray-500 dark:text-zinc-400"
-      >
-        <Bell size="22" />
-        <span
-          class="absolute top-3 right-3 size-2.5 bg-orange-500 rounded-full border-2 border-white dark:border-zinc-900"
-        ></span>
-      </button> -->
-
-      <div class="relative profile-dropdown">
+      <div class="relative">
         <div
           class="flex items-center gap-3 bg-white dark:bg-zinc-900 rounded-full pl-1 pr-4 py-1 shadow-sm cursor-pointer hover:shadow-md transition select-none"
           @click="showDropdown = !showDropdown"
@@ -196,48 +160,15 @@ onUnmounted(() => {
       </div>
     </div>
   </header>
-  <!-- Logout Confirmation Modal -->
-<transition
-  enter-active-class="transition duration-200 ease-out"
-  enter-from-class="opacity-0 scale-95"
-  enter-to-class="opacity-100 scale-100"
-  leave-active-class="transition duration-150 ease-in"
-  leave-from-class="opacity-100 scale-100"
-  leave-to-class="opacity-0 scale-95"
->
-  <div
-    v-if="showLogoutModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-  >
-    <div
-      class="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm p-6 shadow-xl"
-    >
-      <h3 class="text-lg font-bold text-gray-800 dark:text-white">
-        Konfirmasi Logout
-      </h3>
-      <p class="text-sm text-gray-500 mt-2">
-        Anda akan keluar dari sistem dan sesi akan diakhiri.
-      </p>
-
-      <div class="flex justify-end gap-3 mt-6">
-        <button
-          class="px-4 py-2 rounded-xl text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800"
-          :disabled="logoutLoading"
-          @click="showLogoutModal = false"
-        >
-          Batal
-        </button>
-
-        <button
-          class="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center gap-2"
-          :disabled="logoutLoading"
-          @click="confirmLogout"
-        >
-          <span v-if="logoutLoading">Keluar...</span>
-          <span v-else>Ya, Logout</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</transition>
+  <ConfirmModal
+    :show="showLogoutModal"
+    title="Konfirmasi Logout"
+    message="Anda akan keluar dari sistem dan sesi akan diakhiri."
+    confirm-text="Ya, Logout"
+    cancel-text="Batal"
+    :loading="logoutLoading"
+    variant="danger"
+    @confirm="confirmLogout"
+    @cancel="showLogoutModal = false"
+  />
 </template>

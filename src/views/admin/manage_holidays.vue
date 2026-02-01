@@ -1,14 +1,60 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
-import { Calendar, Trash2, Plus, RefreshCw, CloudDownloadIcon } from 'lucide-vue-next'
+import { Trash2, Plus, RefreshCw, CloudDownloadIcon } from 'lucide-vue-next'
 
 const adminStore = useAdminStore()
 const toastRef = ref(null)
 const holidays = ref([])
 const newHoliday = ref({ name: '', date: '' })
 const isSyncing = ref(false)
+const currentPage = ref(1)
+const perPage = ref(5)
+const showDeleteModal = ref(false)
+const deleteLoading = ref(false)
+const selectedHoliday = ref(null)
+
+const openDeleteModal = (holiday) => {
+  selectedHoliday.value = holiday
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  selectedHoliday.value = null
+}
+
+const confirmDelete = async () => {
+  if (!selectedHoliday.value) return
+
+  deleteLoading.value = true
+  try {
+    await adminStore.deleteHoliday(selectedHoliday.value.id)
+    toastRef.value.addToast('Dihapus', 'success')
+    fetchHolidays()
+  } catch (e) {
+    toastRef.value.addToast('Gagal menghapus', 'error')
+  } finally {
+    deleteLoading.value = false
+    closeDeleteModal()
+  }
+}
+
+const totalPages = computed(() => {
+  return Math.ceil(holidays.value.length / perPage.value)
+})
+
+const paginatedHolidays = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  const end = start + perPage.value
+  return holidays.value.slice(start, end)
+})
+
+const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
 
 const handleSync = async () => {
   if (isSyncing.value) return
@@ -26,6 +72,7 @@ const handleSync = async () => {
 const fetchHolidays = async () => {
   try {
     holidays.value = await adminStore.fetchHolidays()
+    currentPage.value = 1
   } catch (e) {
     console.error(e)
   }
@@ -43,16 +90,16 @@ const addHoliday = async () => {
   }
 }
 
-const deleteHoliday = async (id) => {
-  if (!confirm('Hapus hari libur ini?')) return
-  try {
-    await adminStore.deleteHoliday(id)
-    toastRef.value.addToast('Dihapus', 'success')
-    fetchHolidays()
-  } catch (e) {
-    toastRef.value.addToast('Gagal menghapus', 'error')
-  }
-}
+// const deleteHoliday = async (id) => {
+//   if (!confirm('Hapus hari libur ini?')) return
+//   try {
+//     await adminStore.deleteHoliday(id)
+//     toastRef.value.addToast('Dihapus', 'success')
+//     fetchHolidays()
+//   } catch (e) {
+//     toastRef.value.addToast('Gagal menghapus', 'error')
+//   }
+// }
 
 onMounted(fetchHolidays)
 </script>
@@ -120,7 +167,7 @@ onMounted(fetchHolidays)
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-zinc-800">
-            <tr v-for="h in holidays" :key="h.id">
+            <tr v-for="h in paginatedHolidays" :key="h.id">
               <td class="px-6 py-4 font-mono text-sm dark:text-gray-300">
                 {{
                   new Date(h.date).toLocaleDateString('id-ID', {
@@ -134,7 +181,7 @@ onMounted(fetchHolidays)
               <td class="px-6 py-4 font-bold text-gray-700 dark:text-white">{{ h.name }}</td>
               <td class="px-6 py-4 text-right">
                 <button
-                  @click="deleteHoliday(h.id)"
+                  @click="openDeleteModal(h)"
                   class="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg"
                 >
                   <Trash2 size="18" />
@@ -143,10 +190,77 @@ onMounted(fetchHolidays)
             </tr>
           </tbody>
         </table>
+        <div
+          v-if="totalPages > 1"
+          class="flex items-center justify-between px-6 py-4 border-t dark:border-zinc-800"
+        >
+          <p class="text-sm text-gray-400">Page {{ currentPage }} of {{ totalPages }}</p>
+
+          <div class="flex gap-2">
+            <button
+              @click="changePage(currentPage - 1)"
+              :disabled="currentPage === 1"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-zinc-800 disabled:opacity-40"
+            >
+              Prev
+            </button>
+
+            <button
+              @click="changePage(currentPage + 1)"
+              :disabled="currentPage === totalPages"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-zinc-800 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
         <div v-if="holidays.length === 0" class="p-8 text-center text-gray-400">
           Belum ada data hari libur.
         </div>
       </div>
     </div>
   </div>
+  <transition
+    enter-active-class="transition duration-200 ease-out"
+    enter-from-class="opacity-0 scale-95"
+    enter-to-class="opacity-100 scale-100"
+    leave-active-class="transition duration-150 ease-in"
+    leave-from-class="opacity-100 scale-100"
+    leave-to-class="opacity-0 scale-95"
+  >
+    <div
+      v-if="showDeleteModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
+      <div class="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm p-6 shadow-xl" @click.stop>
+        <h3 class="text-lg font-bold dark:text-white">Konfirmasi Hapus</h3>
+
+        <p class="text-sm text-gray-500 mt-2">
+          Yakin ingin menghapus hari libur
+          <span class="font-semibold text-gray-800 dark:text-white">
+            {{ selectedHoliday?.name }} </span
+          >?
+        </p>
+
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            @click="closeDeleteModal"
+            :disabled="deleteLoading"
+            class="px-4 py-2 rounded-xl text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800"
+          >
+            Batal
+          </button>
+
+          <button
+            @click="confirmDelete"
+            :disabled="deleteLoading"
+            class="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold disabled:opacity-50"
+          >
+            {{ deleteLoading ? 'Menghapus...' : 'Ya, Hapus' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
