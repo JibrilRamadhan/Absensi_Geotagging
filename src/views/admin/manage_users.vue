@@ -2,6 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
+import ConfirmModal from '../../components/Modal/ConfirmModal.vue'
+import * as XLSX from 'xlsx'
 import {
   UserPlus,
   ShieldCheck,
@@ -40,16 +42,45 @@ const filterCompany = ref('all')
 const isEdit = ref(false)
 const selectedId = ref(null)
 
-const dashboardStats = computed(() => {
-  const users = adminStore.users
-  const companies = adminStore.companies
-  return {
-    total_users: users.length,
-    present_today: users.filter((u) => u.check_in_at).length,
-    absent_today: users.filter((u) => u.role === 'intern' && !u.check_in_at).length,
-    active_offices: companies.filter((c) => c.has_office).length,
-  }
+const confirmState = ref({
+  show: false,
+  title: '',
+  message: '',
+  action: null,
 })
+
+const confirmLoading = ref(false)
+
+const openConfirm = ({ title, message, variant = 'default', action }) => {
+  confirmState.value = {
+    show: true,
+    title,
+    message,
+    variant,
+    action,
+  }
+}
+
+const handleConfirm = async () => {
+  if (!confirmState.value.action) return
+
+  confirmLoading.value = true
+  try {
+    await confirmState.value.action()
+    confirmState.value.show = false
+  } catch (err) {
+    toastRef.value?.addToast(err.message || 'Terjadi kesalahan', 'error')
+  } finally {
+    confirmLoading.value = false
+  }
+}
+
+const dashboardStats = computed(() => ({
+  total_users: adminStore.totalUsers,
+  present_today: adminStore.internPresentToday.length,
+  absent_today: adminStore.internAbsentToday.length,
+  active_offices: adminStore.activeOffices.length,
+}))
 
 const initialForm = {
   name: '',
@@ -67,17 +98,26 @@ const companies = computed(() => adminStore.companies)
 
 const filteredUsers = computed(() => {
   let users = adminStore.users
-  if (filterRole.value !== 'all') users = users.filter((u) => u.role === filterRole.value)
-  if (filterCompany.value !== 'all') {
-    const companyId = Number(filterCompany.value)
-    users = users.filter((u) => u.company_id === companyId)
+
+  if (filterRole.value !== 'all') {
+    users = users.filter((u) => u.role === filterRole.value)
   }
+
+  if (filterCompany.value !== 'all') {
+    const company = adminStore.companies.find((c) => String(c.id) === String(filterCompany.value))
+
+    if (company) {
+      users = users.filter((u) => u.company_name === company.name)
+    }
+  }
+
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     users = users.filter(
       (u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q),
     )
   }
+
   return users
 })
 
@@ -147,42 +187,94 @@ const handleExportDaily = async () => {
   }
 }
 
-const toggleStatus = async (user) => {
-  const newStatus = !user.status
-  if (!newStatus && !confirm(`Nonaktifkan akses login untuk ${user.name}?`)) return
+const exportAllUsers = () => {
+  const users = adminStore.users
 
-  try {
-    await adminStore.toggleUserStatus(user.id, newStatus)
-    toastRef.value.addToast(`User ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`, 'success')
-  } catch (error) {
-    toastRef.value.addToast('Gagal mengubah status', 'error')
-  }
-}
-
-const handleDelete = async (user) => {
-  if (
-    !confirm(
-      `PERINGATAN: Menghapus user ${user.name} secara permanen?\nData yang dihapus tidak bisa dikembalikan.`,
-    )
-  )
+  if (!users.length) {
+    toastRef.value.addToast('Tidak ada data user untuk diexport', 'error')
     return
-
-  try {
-    await adminStore.deleteUser(user.id)
-    toastRef.value.addToast('User berhasil dihapus permanen', 'success')
-  } catch (error) {
-    toastRef.value.addToast(error.message, 'error')
   }
+
+  const rows = users.map((u, i) => ({
+    No: i + 1,
+    Nama: u.name,
+    Email: u.email,
+    Role: u.role,
+    Company: u.company_name || '-',
+    Status: u.status ? 'Active' : 'Inactive',
+    CheckIn: u.check_in || '-',
+    CheckOut: u.check_out || '-',
+    Dibuat: new Date(u.created_at).toLocaleString('id-ID'),
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(rows)
+  const workbook = XLSX.utils.book_new()
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Users')
+
+  XLSX.writeFile(workbook, `users_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+  toastRef.value.addToast('Export user berhasil', 'success')
 }
 
-const handleReset = async (id) => {
-  if (!confirm('Reset password ke 123456?')) return
-  try {
-    await adminStore.resetPassword(id)
-    toastRef.value.addToast('Password direset', 'success')
-  } catch (error) {
-    toastRef.value.addToast('Gagal reset', 'error')
-  }
+const handleExportClick = () => {
+  openConfirm({
+    title: 'Konfirmasi Export',
+    message:
+      'Anda akan mengekspor seluruh data user ke file Excel. Pastikan data digunakan sesuai kebijakan.',
+    action: exportAllUsers,
+  })
+}
+
+const toggleStatus = (user) => {
+  const newStatus = !user.status
+
+  openConfirm({
+    title: newStatus ? 'Aktifkan User' : 'Nonaktifkan User',
+    variant: newStatus ? 'default' : 'warning',
+    message: newStatus
+      ? `User <b>${user.name}</b> akan diaktifkan kembali dan dapat login.`
+      : `
+        <b class="text-yellow-600">PERINGATAN</b><br/>
+        Akses login <b>${user.name}</b> akan dinonaktifkan.<br/>
+        User tidak dapat masuk ke sistem.
+      `,
+    action: async () => {
+      await adminStore.toggleUserStatus(user.id, newStatus)
+      toastRef.value.addToast(
+        `User berhasil ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`,
+        'success',
+      )
+    },
+  })
+}
+
+const openDeleteModal = (user) => {
+  openConfirm({
+    title: 'Hapus User Permanen',
+    message: `
+      <b>PERINGATAN!</b><br/>
+      User <b>${user.name}</b> akan dihapus permanen.<br/>
+      <span class="text-red-500 font-semibold">
+        Data tidak dapat dikembalikan.
+      </span>
+    `,
+    action: async () => {
+      await adminStore.deleteUser(user.id)
+      toastRef.value.addToast('User berhasil dihapus permanen', 'success')
+    },
+  })
+}
+
+const openResetModal = (user) => {
+  openConfirm({
+    title: 'Reset Password',
+    message: `Password ${user.name} akan direset ke <b>123456</b>. User wajib mengganti setelah login.`,
+    action: async () => {
+      await adminStore.resetPassword(user.id)
+      toastRef.value.addToast('Password berhasil direset', 'success')
+    },
+  })
 }
 
 const handleSubmit = async () => {
@@ -233,10 +325,10 @@ onMounted(() => {
       </div>
       <div class="flex gap-3">
         <button
-          @click="handleExportDaily"
-          class="bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border dark:border-zinc-700 px-4 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-sm hover:bg-gray-50 transition"
+          @click="handleExportClick"
+          class="bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 px-4 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:-translate-y-1 transition"
         >
-          <FileText size="20" /> <span>Export Harian</span>
+          <FileText size="20" /> <span>Export Users</span>
         </button>
         <button
           @click="openCreate"
@@ -405,7 +497,7 @@ onMounted(() => {
 
             <td class="px-6 py-4">
               <div v-if="u.role === 'intern'">
-                <div v-if="u.check_in_at" class="flex flex-col gap-1">
+                <div v-if="u.check_in" class="flex flex-col gap-1">
                   <span
                     class="text-[10px] font-bold text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full w-fit flex items-center gap-1"
                   >
@@ -413,8 +505,8 @@ onMounted(() => {
                     Hadir
                   </span>
                   <span class="text-[11px] text-gray-500 font-mono mt-0.5">
-                    {{ formatDate(u.check_in_at) }} -
-                    {{ u.check_out_at ? formatDate(u.check_out_at) : '...' }}
+                    {{ formatDate(u.check_in) }} -
+                    {{ u.check_out ? formatDate(u.check_out) : '...' }}
                   </span>
                 </div>
 
@@ -469,7 +561,7 @@ onMounted(() => {
                 </button>
 
                 <button
-                  @click="handleReset(u.id)"
+                  @click="openResetModal(u)"
                   class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition"
                   title="Reset Password"
                 >
@@ -497,7 +589,7 @@ onMounted(() => {
                 </button>
 
                 <button
-                  @click="handleDelete(u)"
+                  @click="openDeleteModal(u)"
                   class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition"
                   title="Hapus Permanen"
                 >
@@ -659,6 +751,16 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  <ConfirmModal
+    :show="confirmState.show"
+    :title="confirmState.title"
+    :message="confirmState.message"
+    :variant="confirmState.variant"
+    :loading="confirmLoading"
+    confirm-text="Ya, Lanjutkan"
+    @confirm="handleConfirm"
+    @cancel="confirmState.show = false"
+  />
 </template>
 
 <style scoped>

@@ -10,6 +10,22 @@ export const useAdminStore = defineStore('admin', {
     loading: false,
   }),
 
+  getters: {
+    totalUsers: (state) => state.users.length,
+
+    internUsers: (state) => state.users.filter((u) => u.role === 'intern'),
+
+    internPresentToday() {
+      return this.internUsers.filter((u) => u.check_in)
+    },
+
+    internAbsentToday() {
+      return this.internUsers.filter((u) => !u.check_in)
+    },
+
+    activeOffices: (state) => state.companies.filter((c) => c.has_office),
+  },
+
   actions: {
     async fetchUsers(filters = {}) {
       this.loading = true

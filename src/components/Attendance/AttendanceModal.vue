@@ -151,7 +151,10 @@ const handleSubmit = async () => {
       provider: signalSource.value,
     }
     // Kirim Foto + Lokasi ke Store
-    const res = await attendanceStore.submitAttendanceWithPhoto(payload, photoBlob.value)
+    const res = await attendanceStore.submitAttendance(props.type, photoBlob.value, {
+      latitude: liveLocation.value.latitude,
+      longitude: liveLocation.value.longitude,
+    })
 
     emit('success', res.message || 'Absensi Berhasil')
     emit('close')

@@ -4,20 +4,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
 import SidebarItem from './SidebarItem.vue'
-import {
-  ChevronLeft,
-  Sun,
-  Moon,
-  MapPinHouse,
-  LogOut,
-  LayoutDashboard,
-  ClipboardList,
-  FileClock,
-  MapPin,
-  UserCircle,
-  Users,
-  Settings,
-} from 'lucide-vue-next'
+import { ChevronLeft, Sun, Moon } from 'lucide-vue-next'
+import ConfirmModal from '../Modal/ConfirmModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,6 +13,8 @@ const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const collapsed = ref(false)
 const userRole = computed(() => authStore.user?.role)
+const showLogoutConfirm = ref(false)
+const logoutLoading = ref(false)
 
 const menuItems = computed(() => {
   if (userRole.value === 'admin') {
@@ -46,9 +36,17 @@ const menuItems = computed(() => {
 })
 
 const handleLogout = () => {
-  if (confirm('Apakah Anda yakin ingin keluar?')) {
-    authStore.logout()
+  showLogoutConfirm.value = true
+}
+
+const confirmLogout = async () => {
+  logoutLoading.value = true
+  try {
+    await authStore.logout()
     router.push('/login')
+  } finally {
+    logoutLoading.value = false
+    showLogoutConfirm.value = false
   }
 }
 </script>
@@ -64,13 +62,13 @@ const handleLogout = () => {
     <div class="flex items-center justify-between px-6 py-6">
       <div class="flex items-center gap-3 overflow-hidden">
         <img
-          src="/image/icon.png"
+          src="/image/logo.png"
           alt="GEOTAG Logo"
           class="shrink-0"
           :class="collapsed ? 'w-9 h-9' : 'w-14 h-14'"
         />
         <span v-show="!collapsed" class="text-xl font-bold whitespace-nowrap dark:text-white">
-          GeoTAG
+          LibTrack
         </span>
       </div>
 
@@ -121,7 +119,7 @@ const handleLogout = () => {
 
       <div class="px-4 pb-6 space-y-2">
         <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-2 mb-4"></div>
-        <SidebarItem icon="Settings" label="Settings" :collapsed="collapsed" />
+        <!-- <SidebarItem icon="Settings" label="Settings" :collapsed="collapsed" /> -->
 
         <button
           @click="themeStore.toggleTheme()"
@@ -138,4 +136,13 @@ const handleLogout = () => {
       </div>
     </div>
   </aside>
+  <ConfirmModal
+    :show="showLogoutConfirm"
+    title="Konfirmasi Logout"
+    message="Anda akan keluar dari sistem dan sesi akan diakhiri. Lanjutkan?"
+    :loading="logoutLoading"
+    confirm-text="Ya, Logout"
+    @confirm="confirmLogout"
+    @cancel="showLogoutConfirm = false"
+  />
 </template>

@@ -29,14 +29,10 @@ const loadData = async () => {
 
 // --- Computed Stats ---
 const stats = computed(() => {
-  const users = adminStore.users
-  const companies = adminStore.companies
-
-  // Hitung data real
-  const totalUsers = users.length
-  const present = users.filter((u) => u.check_in_at).length
-  const absent = users.filter((u) => u.role === 'intern' && !u.check_in_at).length
-  const activeOffices = companies.filter((c) => c.has_office).length
+  const totalUsers = adminStore.totalUsers
+  const present = adminStore.internPresentToday.length
+  const absent = adminStore.internAbsentToday.length
+  const activeOffices = adminStore.activeOffices.length
 
   return [
     {
@@ -72,8 +68,8 @@ const stats = computed(() => {
 
 const liveAttendance = computed(() => {
   return adminStore.users
-    .filter((u) => u.check_in_at)
-    .sort((a, b) => new Date(b.check_in_at) - new Date(a.check_in_at))
+    .filter((u) => u.check_in)
+    .sort((a, b) => new Date(b.check_in) - new Date(a.check_in))
 })
 
 // --- Helpers ---
@@ -366,7 +362,7 @@ onUnmounted(() => {
                       class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium"
                     >
                       <Clock size="14" class="text-emerald-500" />
-                      {{ formatTime(user.check_in_at) }}
+                      {{ formatTime(user.check_in) }}
                     </div>
                   </td>
                   <td class="px-6 py-4 hidden md:table-cell">
@@ -377,7 +373,7 @@ onUnmounted(() => {
                   </td>
                   <td class="px-6 py-4 text-center">
                     <span
-                      v-if="user.check_out_at"
+                      v-if="user.check_out"
                       class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400"
                     >
                       Pulang
