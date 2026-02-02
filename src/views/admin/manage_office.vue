@@ -28,19 +28,16 @@ const adminStore = useAdminStore()
 const locationStore = useLocationStore()
 const toastRef = ref(null)
 
-// State UI
 const showFormModal = ref(false)
 const isEdit = ref(false)
 const formCompany = ref({ id: null, name: '' })
 
-// State Map
 const showMapModal = ref(false)
 const isMapReady = ref(false)
-const mapCenter = ref([-6.2088, 106.8456]) // Default Jakarta
+const mapCenter = ref([-6.2088, 106.8456])
 const zoom = ref(16)
 const isLocating = ref(false)
 
-// State Pencarian (Nominatim via Proxy)
 const searchQuery = ref('')
 const searchResults = ref([])
 const isSearching = ref(false)
@@ -62,7 +59,6 @@ onMounted(() => {
   adminStore.fetchCompanies()
 })
 
-// === CRUD COMPANY ===
 const openCreate = () => {
   isEdit.value = false
   formCompany.value = { name: '' }
@@ -110,8 +106,6 @@ const deleteComp = async (c) => {
   }
 }
 
-// === OFFICE LOGIC ===
-
 const openLocation = async (c) => {
   formLocation.value.company_id = c.id
   formLocation.value.company_name = c.name
@@ -124,24 +118,20 @@ const openLocation = async (c) => {
     formLocation.value.radius = parseInt(data.radius)
     formLocation.value.address = data.address || ''
   } else {
-    // Default jika belum ada
     formLocation.value.latitude = -6.2088
     formLocation.value.longitude = 106.8456
     formLocation.value.radius = 100
     formLocation.value.address = ''
   }
 
-  // Set Search Query sesuai alamat yang tersimpan
   searchQuery.value = formLocation.value.address
 
-  // Reset Search State
   searchResults.value = []
   showDropdown.value = false
 
   mapCenter.value = [formLocation.value.latitude, formLocation.value.longitude]
   showMapModal.value = true
 
-  // Delay render map agar ukuran container pas
   setTimeout(() => {
     isMapReady.value = true
   }, 300)
@@ -166,7 +156,6 @@ const deleteOffice = async (c) => {
   }
 }
 
-// 1. Logic Autocomplete Search (VIA PROXY BACKEND)
 const handleSearchInput = () => {
   if (debounceTimeout) clearTimeout(debounceTimeout)
 
@@ -179,10 +168,8 @@ const handleSearchInput = () => {
   isSearching.value = true
   showDropdown.value = true
 
-  // Debounce 800ms agar tidak spam API
   debounceTimeout = setTimeout(async () => {
     try {
-      // [PERUBAHAN UTAMA] Menggunakan Proxy Backend, bukan fetch langsung
       const { data } = await api.get('/api/admin/proxy/search-location', {
         params: { q: searchQuery.value },
       })
@@ -201,33 +188,28 @@ const handleSearchInput = () => {
   }, 800)
 }
 
-// 2. Pilih Hasil Search
 const selectResult = (result) => {
   const lat = parseFloat(result.lat)
   const lon = parseFloat(result.lon)
 
-  // Update Form & Map
   formLocation.value.latitude = lat
   formLocation.value.longitude = lon
   formLocation.value.address = result.display_name
-  searchQuery.value = result.display_name // Tampilkan nama di input
+  searchQuery.value = result.display_name
 
-  mapCenter.value = [lat, lon] // Pindah kamera
-  zoom.value = 18 // Zoom in
+  mapCenter.value = [lat, lon]
+  zoom.value = 18
 
-  showDropdown.value = false // Tutup dropdown
+  showDropdown.value = false
   toastRef.value.addToast('Lokasi dipilih', 'success')
 }
 
-// 3. GPS (Location Store & Proxy Reverse Geo)
 const getCurrentLocation = async () => {
   isLocating.value = true
   try {
-    // Panggil action store (sesuaikan nama action di store Anda)
     if (locationStore.fetchLocation) await locationStore.fetchLocation()
     else if (locationStore.getLocation) await locationStore.getLocation()
 
-    // Ambil dari state
     const lat = locationStore.latitude || locationStore.coords?.latitude
     const lng = locationStore.longitude || locationStore.coords?.longitude
 
@@ -237,7 +219,6 @@ const getCurrentLocation = async () => {
       mapCenter.value = [lat, lng]
       zoom.value = 18
 
-      // Auto Reverse Geocode (Dapatkan nama jalan via Proxy Backend)
       try {
         const { data } = await api.get('/api/admin/proxy/reverse-location', {
           params: { lat: lat, lon: lng },
@@ -255,7 +236,6 @@ const getCurrentLocation = async () => {
       throw new Error('Koordinat tidak ditemukan di store')
     }
   } catch (e) {
-    // Fallback Browser API
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude
@@ -265,7 +245,6 @@ const getCurrentLocation = async () => {
         mapCenter.value = [lat, lng]
         zoom.value = 18
 
-        // Reverse Geo via Proxy juga untuk fallback
         try {
           const { data } = await api.get('/api/admin/proxy/reverse-location', {
             params: { lat, lon: lng },
@@ -286,7 +265,6 @@ const getCurrentLocation = async () => {
   }
 }
 
-// 4. Update saat Marker Digeser (Drag)
 const updateCoordinates = (e) => {
   const { lat, lng } = e.target.getLatLng()
   formLocation.value.latitude = lat
@@ -295,7 +273,6 @@ const updateCoordinates = (e) => {
 
 const saveLocation = async () => {
   try {
-    // Pastikan field address terisi
     formLocation.value.address = searchQuery.value || formLocation.value.address
     await adminStore.saveOffice(formLocation.value)
     toastRef.value.addToast('Lokasi kantor berhasil disimpan', 'success')
@@ -394,7 +371,7 @@ const saveLocation = async () => {
         >
           <button
             @click="openLocation(c)"
-            class="flex-1 py-2 bg-white dark:bg-zinc-800 border dark:border-zinc-700 hover:border-orange-500 text-gray-600 dark:text-gray-300 hover:text-orange-500 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition shadow-sm"
+            class="flex-1 py-2.5 px-2 bg-white dark:bg-zinc-800 border dark:border-zinc-700 hover:border-orange-500 text-gray-600 dark:text-gray-300 hover:text-orange-500 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition shadow-sm"
           >
             <MapPinHouse size="14" /> {{ c.has_office ? 'Ubah Lokasi' : 'Set Lokasi' }}
           </button>

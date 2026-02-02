@@ -75,12 +75,25 @@ const handleConfirm = async () => {
   }
 }
 
-const dashboardStats = computed(() => ({
-  total_users: adminStore.totalUsers,
-  present_today: adminStore.internPresentToday.length,
-  absent_today: adminStore.internAbsentToday.length,
-  active_offices: adminStore.activeOffices.length,
-}))
+const dashboardStats = computed(() => {
+  const allUsers = adminStore.users || []
+  const allCompanies = adminStore.companies || []
+
+  const interns = allUsers.filter((u) => u.role === 'intern')
+
+  const presentCount = interns.filter((u) => u.check_in).length
+
+  const absentCount = interns.filter((u) => !u.check_in).length
+
+  const activeOfficesCount = allCompanies.filter((c) => c.has_office && c.office_is_active).length
+
+  return {
+    total_users: allUsers.length,
+    present_today: presentCount,
+    absent_today: absentCount,
+    active_offices: activeOfficesCount,
+  }
+})
 
 const initialForm = {
   name: '',
@@ -347,7 +360,7 @@ onMounted(() => {
           <Users size="24" />
         </div>
         <div>
-          <p class="text-sm text-gray-500">Total Users</p>
+          <p class="text-sm text-gray-500">Total Account</p>
           <p class="text-2xl font-bold dark:text-white">{{ dashboardStats.total_users }}</p>
         </div>
       </div>

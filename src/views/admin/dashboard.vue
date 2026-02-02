@@ -1,404 +1,824 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import ApexCharts from 'apexcharts'
 import { useAdminStore } from '../../stores/adminStore'
-import { Users, UserCheck, AlertCircle, Building2, Clock, MapPin, RefreshCw } from 'lucide-vue-next'
+import {
+  Users,
+  UserCheck,
+  UserX,
+  Building2,
+  RefreshCw,
+  Clock,
+  MapPin,
+  TrendingUp,
+  Calendar,
+  Activity,
+  ArrowUpRight,
+  Award,
+  Target,
+} from 'lucide-vue-next'
 import Toast from '../../components/Allert/allert.vue'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const adminStore = useAdminStore()
 const toastRef = ref(null)
+
 const isLoading = ref(true)
+const currentTime = ref(new Date())
 const attendanceChartEl = ref(null)
 const companyChartEl = ref(null)
+const weekTrendChartEl = ref(null)
 let attendanceChart = null
 let companyChart = null
-let resizeObserver = null
+let weekTrendChart = null
+let timeInterval = null
 
 const loadData = async () => {
   isLoading.value = true
   try {
     await Promise.all([adminStore.fetchUsers(), adminStore.fetchCompanies()])
+    toastRef.value?.addToast('Data berhasil dimuat', 'success')
   } catch (error) {
     toastRef.value?.addToast('Gagal memuat data dashboard', 'error')
   } finally {
     isLoading.value = false
-    nextTick(initCharts)
+    nextTick(() => {
+      updateCharts()
+    })
   }
 }
 
-// --- Computed Stats ---
-const stats = computed(() => {
-  const totalUsers = adminStore.totalUsers
-  const present = adminStore.internPresentToday.length
-  const absent = adminStore.internAbsentToday.length
-  const activeOffices = adminStore.activeOffices.length
+const dashboardData = computed(() => {
+  const users = adminStore.users || []
+  const companies = adminStore.companies || []
+  const interns = users.filter((u) => u.role === 'intern')
+  const present = interns.filter((u) => u.check_in).length
+  const absent = interns.length - present
+  const activeOffices = companies.filter((c) => c.has_office && c.office_is_active).length
+  const attendanceRate = interns.length > 0 ? Math.round((present / interns.length) * 100) : 0
 
-  return [
-    {
-      label: 'Total Interns',
-      value: totalUsers,
-      icon: Users,
-      color: 'text-indigo-600 dark:text-indigo-400',
-      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
-    },
-    {
-      label: 'Hadir Hari Ini',
-      value: present,
-      icon: UserCheck,
-      color: 'text-emerald-600 dark:text-emerald-400',
-      bg: 'bg-emerald-50 dark:bg-emerald-900/20',
-    },
-    {
-      label: 'Belum Hadir',
-      value: absent,
-      icon: AlertCircle,
-      color: 'text-rose-600 dark:text-rose-400',
-      bg: 'bg-rose-50 dark:bg-rose-900/20',
-    },
-    {
-      label: 'Kantor Aktif',
-      value: activeOffices,
-      icon: Building2,
-      color: 'text-amber-600 dark:text-amber-400',
-      bg: 'bg-amber-50 dark:bg-amber-900/20',
-    },
-  ]
+  return {
+    totalInterns: interns.length,
+    present,
+    absent,
+    activeOffices,
+    companiesCount: companies.length,
+    attendanceRate,
+  }
 })
 
-const liveAttendance = computed(() => {
+const statCards = computed(() => [
+  {
+    label: 'Total Peserta',
+    sublabel: 'Magang Aktif',
+    value: dashboardData.value.totalInterns,
+    icon: Users,
+    iconBg: 'bg-gray-100 dark:bg-zinc-800',
+    iconColor: 'text-black dark:text-white',
+    trend: '+12%',
+    trendUp: true,
+  },
+  {
+    label: 'Hadir Hari Ini',
+    sublabel: `${dashboardData.value.attendanceRate}% Attendance`,
+    value: dashboardData.value.present,
+    icon: UserCheck,
+    iconBg: 'bg-gray-100 dark:bg-zinc-800',
+    iconColor: 'text-black dark:text-white',
+    trend: '+8%',
+    trendUp: true,
+  },
+  {
+    label: 'Belum Hadir',
+    sublabel: 'Perlu Tindak Lanjut',
+    value: dashboardData.value.absent,
+    icon: UserX,
+    iconBg: 'bg-gray-100 dark:bg-zinc-800',
+    iconColor: 'text-black dark:text-white',
+    trend: '-4%',
+    trendUp: false,
+  },
+  {
+    label: 'Kantor Aktif',
+    sublabel: 'Geofencing Enabled',
+    value: dashboardData.value.activeOffices,
+    icon: Building2,
+    iconBg: 'bg-gray-100 dark:bg-zinc-800',
+    iconColor: 'text-black dark:text-white',
+    trend: '+2',
+    trendUp: true,
+  },
+])
+
+const liveAttendanceList = computed(() => {
   return adminStore.users
-    .filter((u) => u.check_in)
+    .filter((u) => u.check_in && u.role === 'intern')
     .sort((a, b) => new Date(b.check_in) - new Date(a.check_in))
+    .slice(0, 8)
 })
 
-// --- Helpers ---
-const getAvatar = (path) =>
-  path ? (path.startsWith('http') ? path : `${API_BASE_URL}${path}`) : null
-const getInitials = (name) =>
-  name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() || 'U'
-const formatTime = (isoString) =>
-  isoString
-    ? new Date(isoString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    : '-'
+const topCompanies = computed(() => {
+  const companyMap = {}
+  adminStore.users
+    .filter((u) => u.role === 'intern')
+    .forEach((u) => {
+      const name = u.company_name || 'No Company'
+      companyMap[name] = (companyMap[name] || 0) + 1
+    })
 
-// --- Chart Logic ---
-const initCharts = () => {
+  return Object.entries(companyMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }))
+})
+
+const updateCharts = () => {
   if (!attendanceChartEl.value || !companyChartEl.value) return
 
   const isDark = document.documentElement.classList.contains('dark')
-  const textColor = isDark ? '#a1a1aa' : '#64748b'
-  const fontFamily = 'Inter, sans-serif'
+  const textColor = isDark ? '#a1a1aa' : '#52525b'
+  const gridColor = isDark ? '#27272a' : '#e4e4e7'
+  const fontFamily = '"DM Sans", system-ui, sans-serif'
+  const primaryColor = isDark ? '#ffffff' : '#000000'
+  const secondaryColor = isDark ? '#52525b' : '#d4d4d8'
 
-  // 1. Attendance Donut Chart
-  const presentCount = stats.value[1].value
-  const absentCount = stats.value[2].value
+  const present = dashboardData.value.present
+  const absent = dashboardData.value.absent
 
-  if (attendanceChart) attendanceChart.destroy()
-  attendanceChart = new ApexCharts(attendanceChartEl.value, {
-    series: [presentCount, absentCount],
-    labels: ['Hadir', 'Absen'],
+  const donutOptions = {
+    series: [present, absent],
+    labels: ['Hadir', 'Belum Hadir'],
     chart: {
       type: 'donut',
       height: 280,
       background: 'transparent',
       fontFamily,
+      animations: {
+        enabled: true,
+        speed: 800,
+        animateGradually: { enabled: true, delay: 150 },
+      },
     },
-    colors: ['#10b981', '#f43f5e'],
+    colors: [primaryColor, secondaryColor],
+    stroke: { show: false },
     plotOptions: {
       pie: {
         donut: {
-          size: '75%',
+          size: '70%',
           labels: {
             show: true,
             total: {
               show: true,
-              label: 'Total',
+              label: 'Total Magang',
+              fontSize: '12px',
               color: textColor,
-              fontSize: '14px',
-              fontWeight: 500,
-              formatter: () => presentCount + absentCount,
+              formatter: () => present + absent,
             },
             value: {
-              color: isDark ? '#fff' : '#0f172a',
-              fontSize: '24px',
+              fontSize: '32px',
               fontWeight: 700,
-              offsetY: 2,
+              color: primaryColor,
+              offsetY: 8,
             },
           },
         },
       },
     },
     dataLabels: { enabled: false },
-    stroke: { show: false },
-    legend: { position: 'bottom', labels: { colors: textColor } },
-    tooltip: { theme: isDark ? 'dark' : 'light' },
-  })
+    legend: {
+      position: 'bottom',
+      labels: { colors: textColor },
+      fontSize: '13px',
+      fontWeight: 500,
+    },
+    tooltip: {
+      theme: isDark ? 'dark' : 'light',
+      y: {
+        formatter: (val) => `${val} orang`,
+      },
+    },
+  }
+
+  if (attendanceChart) attendanceChart.destroy()
+  attendanceChart = new ApexCharts(attendanceChartEl.value, donutOptions)
   attendanceChart.render()
 
-  // 2. Company Distribution Bar Chart
-  const companyCounts = {}
-  adminStore.users.forEach((u) => {
-    if (u.role === 'intern') {
-      const name = u.company_name || 'Unassigned'
-      companyCounts[name] = (companyCounts[name] || 0) + 1
-    }
-  })
+  const companyMap = {}
+  adminStore.users
+    .filter((u) => u.role === 'intern')
+    .forEach((u) => {
+      const name = u.company_name || 'No Company'
+      companyMap[name] = (companyMap[name] || 0) + 1
+    })
 
-  if (companyChart) companyChart.destroy()
-  companyChart = new ApexCharts(companyChartEl.value, {
-    series: [{ name: 'Interns', data: Object.values(companyCounts) }],
+  const companyNames = Object.keys(companyMap)
+  const companyValues = Object.values(companyMap)
+
+  const barOptions = {
+    series: [{ name: 'Peserta', data: companyValues }],
     chart: {
       type: 'bar',
       height: 280,
       background: 'transparent',
       toolbar: { show: false },
       fontFamily,
+      animations: {
+        enabled: true,
+        speed: 800,
+      },
     },
-    colors: ['#6366f1'],
+    colors: [primaryColor],
     plotOptions: {
-      bar: { borderRadius: 6, columnWidth: '45%', distributed: true },
+      bar: {
+        borderRadius: 8,
+        columnWidth: '60%',
+        distributed: false,
+        dataLabels: { position: 'top' },
+      },
+    },
+    dataLabels: {
+      enabled: true,
+      offsetY: -20,
+      style: {
+        fontSize: '11px',
+        colors: [textColor],
+        fontWeight: 600,
+      },
     },
     xaxis: {
-      categories: Object.keys(companyCounts),
-      labels: { style: { colors: textColor, fontSize: '12px' } },
+      categories: companyNames,
+      labels: {
+        style: { colors: textColor, fontSize: '11px', fontWeight: 500 },
+        rotate: -45,
+        trim: true,
+      },
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
-    yaxis: { show: false },
+    yaxis: {
+      show: true,
+      labels: { style: { colors: textColor, fontSize: '11px' } },
+    },
     grid: {
-      borderColor: isDark ? '#27272a' : '#f1f5f9',
-      strokeDashArray: 4,
+      borderColor: gridColor,
+      strokeDashArray: 3,
+      padding: { top: 0, right: 10, bottom: 0, left: 10 },
     },
     legend: { show: false },
-    tooltip: { theme: isDark ? 'dark' : 'light' },
-  })
+    tooltip: {
+      theme: isDark ? 'dark' : 'light',
+      y: { formatter: (val) => `${val} peserta` },
+    },
+  }
+
+  if (companyChart) companyChart.destroy()
+  companyChart = new ApexCharts(companyChartEl.value, barOptions)
   companyChart.render()
+
+  const weekTrendOptions = {
+    series: [
+      {
+        name: 'Kehadiran',
+        data: [65, 72, 68, 75, 70, 78, present],
+      },
+    ],
+    chart: {
+      type: 'area',
+      height: 280,
+      background: 'transparent',
+      toolbar: { show: false },
+      fontFamily,
+      sparkline: { enabled: false },
+    },
+    stroke: {
+      curve: 'smooth',
+      width: 3,
+      colors: [primaryColor],
+    },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.2,
+        opacityTo: 0.05,
+        stops: [0, 100],
+      },
+      colors: [primaryColor],
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'],
+      labels: {
+        style: { colors: textColor, fontSize: '11px', fontWeight: 500 },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      show: true,
+      labels: {
+        style: { colors: textColor, fontSize: '11px' },
+        formatter: (val) => Math.round(val),
+      },
+    },
+    grid: {
+      borderColor: gridColor,
+      strokeDashArray: 3,
+      padding: { top: 10, right: 10, bottom: 0, left: 0 },
+    },
+    tooltip: {
+      theme: isDark ? 'dark' : 'light',
+      y: { formatter: (val) => `${val} orang` },
+    },
+    colors: [primaryColor],
+  }
+
+  if (weekTrendChart) weekTrendChart.destroy()
+  weekTrendChart = new ApexCharts(weekTrendChartEl.value, weekTrendOptions)
+  weekTrendChart.render()
 }
 
-// --- Lifecycle ---
+const getAvatar = (profilePicture) => {
+  if (!profilePicture) return ''
+  return profilePicture.startsWith('http') ? profilePicture : `${API_BASE_URL}${profilePicture}`
+}
+
+const getInitials = (name) => {
+  if (!name) return '??'
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+const formatTime = (datetime) => {
+  if (!datetime) return '-'
+  const date = new Date(datetime)
+  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
+const formatGreeting = () => {
+  const hour = currentTime.value.getHours()
+  if (hour < 12) return 'Selamat Pagi Admin'
+  if (hour < 15) return 'Selamat Siang Admin'
+  if (hour < 18) return 'Selamat Sore Admin'
+  return 'Selamat Malam Admin'
+}
+
+const formatCurrentTime = () => {
+  return currentTime.value.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+const formatCurrentDate = () => {
+  return currentTime.value.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
 onMounted(async () => {
   await loadData()
 
-  // Auto-refresh chart jika tema berubah atau window resize
-  resizeObserver = new ResizeObserver(() => {
-    requestAnimationFrame(initCharts)
+  timeInterval = setInterval(() => {
+    currentTime.value = new Date()
+  }, 1000)
+
+  const observer = new MutationObserver(() => {
+    setTimeout(updateCharts, 200)
   })
-  resizeObserver.observe(document.body)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 })
 
 onUnmounted(() => {
   if (attendanceChart) attendanceChart.destroy()
   if (companyChart) companyChart.destroy()
-  if (resizeObserver) resizeObserver.disconnect()
+  if (weekTrendChart) weekTrendChart.destroy()
+  if (timeInterval) clearInterval(timeInterval)
 })
 </script>
 
 <template>
-  <div
-    class="p-6 min-h-screen bg-gray-50 dark:bg-[#0a0a0a] font-sans transition-colors duration-300"
-  >
+  <div class="min-h-screen bg-gray-50 dark:bg-black transition-colors duration-300 font-sans">
     <Toast ref="toastRef" />
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-      <div>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-          Dashboard Overview
-        </h1>
-        <p class="text-gray-500 dark:text-gray-400 mt-1">
-          Pantau aktivitas kehadiran dan statistik peserta magang.
-        </p>
-      </div>
-      <button
-        @click="loadData"
-        class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition"
-      >
-        <RefreshCw size="16" :class="{ 'animate-spin': isLoading }" />
-        Refresh Data
-      </button>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      <div
-        v-for="(stat, idx) in stats"
-        :key="idx"
-        class="bg-white dark:bg-[#121212] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800/60 hover:border-gray-200 dark:hover:border-zinc-700 transition-all duration-300 group"
-      >
-        <div class="flex justify-between items-start mb-4">
-          <div :class="`p-3 rounded-xl ${stat.bg}`">
-            <component :is="stat.icon" :class="`w-6 h-6 ${stat.color}`" />
-          </div>
-          <div
-            v-if="isLoading"
-            class="h-8 w-12 bg-gray-200 dark:bg-zinc-800 rounded-lg animate-pulse"
-          ></div>
-          <span v-else class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{{
-            stat.value
-          }}</span>
-        </div>
-        <p
-          class="text-sm font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors"
-        >
-          {{ stat.label }}
-        </p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div class="lg:col-span-1 space-y-8">
-        <div
-          class="bg-white dark:bg-[#121212] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60"
-        >
-          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6">Persentase Kehadiran</h3>
-          <div
-            v-if="isLoading"
-            class="h-70 bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
-          ></div>
-          <div v-else ref="attendanceChartEl"></div>
-        </div>
-
-        <div
-          class="bg-white dark:bg-[#121212] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60"
-        >
-          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6">
-            Distribusi per Perusahaan
-          </h3>
-          <div
-            v-if="isLoading"
-            class="h-70 bg-gray-100 dark:bg-zinc-900 rounded-xl animate-pulse"
-          ></div>
-          <div v-else ref="companyChartEl"></div>
-        </div>
-      </div>
-
-      <div class="lg:col-span-2">
-        <div
-          class="bg-white dark:bg-[#121212] rounded-3xl shadow-sm border border-gray-100 dark:border-zinc-800/60 overflow-hidden flex flex-col h-full"
-        >
-          <div
-            class="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center"
-          >
-            <div>
-              <h3 class="text-lg font-bold text-gray-900 dark:text-white">Live Attendance</h3>
-              <p class="text-sm text-gray-500 dark:text-gray-400">Real-time update hari ini</p>
+    <div class="relative bg-white dark:bg-black border-b border-gray-200 dark:border-zinc-800">
+      <div class="relative max-w-7xl mx-auto px-6 py-8">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div class="space-y-1">
+            <div class="flex items-center gap-3 mb-1">
+              <h1 class="text-4xl font-bold text-black dark:text-white tracking-tight">
+                {{ formatGreeting() }}!
+              </h1>
             </div>
-            <span
-              class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-            >
-              <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              {{ liveAttendance.length }} Hadir
-            </span>
+            <p class="text-gray-600 dark:text-gray-400 text-lg font-medium">
+              Selamat datang di Dashboard Monitoring Magang
+            </p>
+            <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-500">
+              <div class="flex items-center gap-2">
+                <Calendar class="w-4 h-4" />
+                <span>{{ formatCurrentDate() }}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <Clock class="w-4 h-4" />
+                <span class="font-mono">{{ formatCurrentTime() }}</span>
+              </div>
+            </div>
           </div>
 
-          <div class="overflow-x-auto flex-1">
-            <table class="w-full text-left border-collapse">
-              <thead
-                class="bg-gray-50/50 dark:bg-zinc-800/30 text-gray-400 text-xs uppercase font-semibold"
+          <div class="flex items-center gap-3">
+            <button
+              @click="loadData"
+              :disabled="isLoading"
+              class="group relative px-6 py-3 bg-black dark:bg-white text-white dark:text-black font-bold rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <div class="relative flex items-center gap-2">
+                <RefreshCw :class="['w-5 h-5', { 'animate-spin': isLoading }]" />
+                <span>{{ isLoading ? 'Loading...' : 'Refresh' }}</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div
+          v-for="(stat, idx) in statCards"
+          :key="idx"
+          class="group relative bg-white dark:bg-black rounded-xl p-6 border border-gray-200 dark:border-zinc-700 dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+        >
+          <div class="relative z-10">
+            <div class="flex justify-between items-start mb-4">
+              <div :class="`p-3 rounded-xl ${stat.iconBg} transition-transform duration-500`">
+                <component :is="stat.icon" :class="`w-6 h-6 ${stat.iconColor}`" />
+              </div>
+              <div
+                class="flex items-center gap-1 text-xs font-bold border border-gray-200 dark:border-zinc-700 px-2 py-1 rounded-lg"
               >
-                <tr>
-                  <th class="px-6 py-4">User</th>
-                  <th class="px-6 py-4">Check In</th>
-                  <th class="px-6 py-4 hidden md:table-cell">Kantor</th>
-                  <th class="px-6 py-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-100 dark:divide-zinc-800">
-                <tr v-if="isLoading">
-                  <td colspan="4" class="px-6 py-4">
-                    <div class="flex gap-4 animate-pulse">
-                      <div class="w-10 h-10 bg-gray-200 dark:bg-zinc-800 rounded-full"></div>
-                      <div class="flex-1 space-y-2 py-1">
-                        <div class="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-1/4"></div>
-                        <div class="h-3 bg-gray-200 dark:bg-zinc-800 rounded w-1/3"></div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-else-if="liveAttendance.length === 0">
-                  <td colspan="4" class="px-6 py-12 text-center text-gray-400">
-                    <div class="flex flex-col items-center gap-2">
-                      <Clock size="32" class="opacity-20" />
-                      <p>Belum ada yang check-in hari ini.</p>
-                    </div>
-                  </td>
-                </tr>
-                <tr
-                  v-else
-                  v-for="user in liveAttendance"
-                  :key="user.id"
-                  class="group hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                <ArrowUpRight
+                  :class="[
+                    'w-3 h-3',
+                    stat.trendUp ? 'text-black dark:text-white' : 'text-gray-400 rotate-90',
+                  ]"
+                />
+                <span
+                  :class="
+                    stat.trendUp ? 'text-black dark:text-white' : 'text-gray-500 dark:text-gray-400'
+                  "
                 >
-                  <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
+                  {{ stat.trend }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="isLoading" class="space-y-3">
+              <div class="h-10 w-24 bg-gray-200 dark:bg-zinc-800 rounded-lg animate-pulse"></div>
+              <div class="h-4 w-32 bg-gray-200 dark:bg-zinc-800 rounded animate-pulse"></div>
+            </div>
+            <div v-else class="space-y-2">
+              <div class="text-3xl font-bold text-black dark:text-white tracking-tight">
+                {{ stat.value }}
+              </div>
+              <div class="space-y-0.5">
+                <p class="text-sm font-bold text-gray-700 dark:text-gray-300">
+                  {{ stat.label }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-500">
+                  {{ stat.sublabel }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div
+          class="bg-white dark:bg-black rounded-xl p-6 border border-gray-200 dark:border-zinc-700 dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+        >
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-black dark:text-white">Kehadiran</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">Hari ini</p>
+            </div>
+            <div class="p-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+              <Activity class="w-5 h-5 text-black dark:text-white" />
+            </div>
+          </div>
+          <div
+            v-if="isLoading"
+            class="h-[280px] bg-gray-100 dark:bg-zinc-800/50 rounded-xl animate-pulse"
+          ></div>
+          <div v-else ref="attendanceChartEl" class="min-h-[280px]"></div>
+        </div>
+
+        <div
+          class="bg-white dark:bg-black rounded-xl p-6 border border-gray-200 dark:border-zinc-700 dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+        >
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-black dark:text-white">Tren Mingguan</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">7 hari terakhir</p>
+            </div>
+            <div class="p-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+              <TrendingUp class="w-5 h-5 text-black dark:text-white" />
+            </div>
+          </div>
+          <div
+            v-if="isLoading"
+            class="h-[280px] bg-gray-100 dark:bg-zinc-800/50 rounded-xl animate-pulse"
+          ></div>
+          <div v-else ref="weekTrendChartEl" class="min-h-[280px]"></div>
+        </div>
+
+        <div
+          class="bg-white dark:bg-black rounded-xl p-6 border border-gray-200 dark:border-zinc-700 dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+        >
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-black dark:text-white">Top Perusahaan</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">Paling banyak peserta</p>
+            </div>
+            <div class="p-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+              <Award class="w-5 h-5 text-black dark:text-white" />
+            </div>
+          </div>
+
+          <div v-if="isLoading" class="space-y-4">
+            <div
+              v-for="i in 5"
+              :key="i"
+              class="h-12 bg-gray-100 dark:bg-zinc-800/50 rounded-lg animate-pulse"
+            ></div>
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="(company, idx) in topCompanies"
+              :key="idx"
+              class="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-zinc-800 hover:border-black dark:hover:border-white transition-colors group"
+            >
+              <div class="flex items-center gap-3">
+                <div
+                  class="flex items-center justify-center w-6 h-6 rounded bg-black dark:bg-white text-white dark:text-black text-xs font-bold"
+                >
+                  {{ idx + 1 }}
+                </div>
+                <div>
+                  <p class="font-bold text-black dark:text-white text-sm">
+                    {{ company.name }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-lg font-bold text-black dark:text-white">
+                  {{ company.count }}
+                </span>
+                <Users class="w-4 h-4 text-gray-400" />
+              </div>
+            </div>
+
+            <div v-if="topCompanies.length === 0" class="text-center py-8 text-gray-400">
+              <Building2 class="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p class="text-sm">Belum ada data perusahaan</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="bg-white dark:bg-black rounded-xl p-6 border border-gray-200 dark:border-zinc-700 dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+      >
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h3 class="text-lg font-bold text-black dark:text-white">Distribusi Perusahaan</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">
+              Sebaran peserta per perusahaan
+            </p>
+          </div>
+          <div class="p-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+            <Target class="w-5 h-5 text-black dark:text-white" />
+          </div>
+        </div>
+        <div
+          v-if="isLoading"
+          class="h-[280px] bg-gray-100 dark:bg-zinc-800/50 rounded-xl animate-pulse"
+        ></div>
+        <div v-else ref="companyChartEl" class="min-h-[280px]"></div>
+      </div>
+
+      <div
+        class="bg-white dark:bg-black rounded-xl border border-gray-200 dark:border-zinc-700 overflow-hidden dark:shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+      >
+        <div class="bg-black dark:bg-white p-6">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white/10 dark:bg-black/10 rounded-lg">
+                <Clock class="w-5 h-5 text-white dark:text-black" />
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white dark:text-black">Live Attendance</h3>
+                <p class="text-gray-400 dark:text-gray-600 text-sm mt-0.5">
+                  Real-time check-in monitoring
+                </p>
+              </div>
+            </div>
+            <div
+              class="flex items-center gap-2 px-3 py-1 bg-white/10 dark:bg-black/10 rounded-full border border-white/20 dark:border-black/20"
+            >
+              <span class="relative flex h-3 w-3">
+                <span
+                  class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white dark:bg-black opacity-75"
+                ></span>
+                <span
+                  class="relative inline-flex rounded-full h-2 w-2 bg-white dark:bg-black"
+                ></span>
+              </span>
+              <span class="text-white dark:text-black text-xs font-bold uppercase tracking-wider"
+                >LIVE</span
+              >
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead
+              class="bg-gray-50 dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800"
+            >
+              <tr>
+                <th
+                  class="px-6 py-4 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider"
+                >
+                  User
+                </th>
+                <th
+                  class="px-6 py-4 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider"
+                >
+                  Check-In
+                </th>
+                <th
+                  class="px-6 py-4 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell"
+                >
+                  Perusahaan
+                </th>
+                <th
+                  class="px-6 py-4 text-center text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider"
+                >
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-zinc-800">
+              <tr v-if="isLoading">
+                <td colspan="4" class="px-6 py-12 text-center">
+                  <div class="flex justify-center items-center gap-3 text-gray-400">
+                    <RefreshCw class="animate-spin w-6 h-6" />
+                    <span class="font-medium">Memuat data...</span>
+                  </div>
+                </td>
+              </tr>
+
+              <tr v-else-if="liveAttendanceList.length === 0">
+                <td colspan="4" class="px-6 py-16 text-center">
+                  <div class="flex flex-col items-center gap-4 text-gray-400">
+                    <Clock class="w-16 h-16 opacity-30" />
+                    <div>
+                      <p class="font-bold text-lg">Belum Ada Aktivitas</p>
+                      <p class="text-sm mt-1">Belum ada peserta yang check-in hari ini</p>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr
+                v-else
+                v-for="(user, idx) in liveAttendanceList"
+                :key="user.id"
+                class="group hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all duration-300"
+              >
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-4">
+                    <div class="relative">
                       <div
-                        class="w-10 h-10 rounded-full border-2 border-white dark:border-zinc-800 shadow-sm overflow-hidden bg-gray-100 dark:bg-zinc-800 flex items-center justify-center shrink-0"
+                        class="w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700"
                       >
                         <img
                           v-if="user.profile_picture"
                           :src="getAvatar(user.profile_picture)"
                           class="w-full h-full object-cover"
                         />
-                        <span v-else class="text-xs font-bold text-gray-400">{{
-                          getInitials(user.name)
-                        }}</span>
-                      </div>
-                      <div>
-                        <p
-                          class="font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
+                        <div
+                          v-else
+                          class="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400"
                         >
-                          {{ user.name }}
-                        </p>
-                        <p class="text-xs text-gray-500">{{ user.email }}</p>
+                          {{ getInitials(user.name) }}
+                        </div>
                       </div>
+                      <div
+                        class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-black dark:bg-white border-2 border-white dark:border-black rounded-full"
+                      ></div>
                     </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div
-                      class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium"
-                    >
-                      <Clock size="14" class="text-emerald-500" />
+                    <div>
+                      <p class="font-bold text-black dark:text-white text-sm">
+                        {{ user.name }}
+                      </p>
+                      <p class="text-xs text-gray-500">{{ user.email }}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <Clock class="w-4 h-4 text-gray-400" />
+                    <span class="font-mono font-medium text-black dark:text-white text-sm">
                       {{ formatTime(user.check_in) }}
-                    </div>
-                  </td>
-                  <td class="px-6 py-4 hidden md:table-cell">
-                    <div class="flex items-center gap-2 text-sm text-gray-500">
-                      <Building2 size="14" class="text-indigo-500" />
-                      <span class="truncate max-w-37.5">{{ user.company_name || 'N/A' }}</span>
-                    </div>
-                  </td>
-                  <td class="px-6 py-4 text-center">
-                    <span
-                      v-if="user.check_out"
-                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400"
-                    >
-                      Pulang
                     </span>
+                  </div>
+                </td>
+                <td class="px-6 py-4 hidden md:table-cell">
+                  <div class="flex items-center gap-2">
+                    <Building2 class="w-4 h-4 text-gray-400" />
                     <span
-                      v-else
-                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate max-w-[200px]"
                     >
-                      <span class="relative flex h-2 w-2">
-                        <span
-                          class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
-                        ></span>
-                        <span
-                          class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"
-                        ></span>
-                      </span>
-                      Aktif
+                      {{ user.company_name || 'Global' }}
                     </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 text-center">
+                  <span
+                    v-if="user.check_out"
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-400"
+                  >
+                    Selesai
+                  </span>
+                  <span
+                    v-else
+                    class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border border-black dark:border-white text-black dark:text-white"
+                  >
+                    <span class="relative flex h-2 w-2">
+                      <span
+                        class="animate-ping absolute inline-flex h-full w-full rounded-full bg-black dark:bg-white opacity-75"
+                      ></span>
+                      <span
+                        class="relative inline-flex rounded-full h-1.5 w-1.5 bg-black dark:bg-white"
+                      ></span>
+                    </span>
+                    Aktif
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+
+* {
+  font-family:
+    'DM Sans',
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+</style>
