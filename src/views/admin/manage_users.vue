@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
 import ConfirmModal from '../../components/Modal/ConfirmModal.vue'
@@ -23,7 +23,6 @@ import {
   Phone,
   FileText,
   Activity,
-  Download,
 } from 'lucide-vue-next'
 
 const adminStore = useAdminStore()
@@ -37,10 +36,14 @@ const selectedUserAudit = ref(null)
 
 const isLoading = ref(false)
 const searchQuery = ref('')
-const filterRole = ref('all')
 const filterCompany = ref('all')
 const isEdit = ref(false)
 const selectedId = ref(null)
+
+const currentPage = ref(1)
+const pageSize = ref(5)
+const totalUsers = ref(0)
+const totalPages = computed(() => Math.ceil(totalUsers.value / pageSize.value) || 1)
 
 const confirmState = ref({
   show: false,
@@ -76,15 +79,18 @@ const handleConfirm = async () => {
 }
 
 const dashboardStats = computed(() => {
-  const allUsers = adminStore.users || []
-  const allCompanies = adminStore.companies || []
+  // pastikan array, jika object ambil .users atau [] sebagai fallback
+  const allUsers = Array.isArray(adminStore.users)
+    ? adminStore.users
+    : adminStore.users?.users || []
+  const allCompanies = Array.isArray(adminStore.companies)
+    ? adminStore.companies
+    : adminStore.companies?.companies || []
 
   const interns = allUsers.filter((u) => u.role === 'intern')
 
   const presentCount = interns.filter((u) => u.check_in).length
-
   const absentCount = interns.filter((u) => !u.check_in).length
-
   const activeOfficesCount = allCompanies.filter((c) => c.has_office && c.office_is_active).length
 
   return {
@@ -110,20 +116,18 @@ const form = ref({ ...initialForm })
 const companies = computed(() => adminStore.companies)
 
 const filteredUsers = computed(() => {
-  let users = adminStore.users
+  // pastikan array
+  let users = Array.isArray(adminStore.users?.users) ? adminStore.users.users : []
 
-  if (filterRole.value !== 'all') {
-    users = users.filter((u) => u.role === filterRole.value)
-  }
-
+  // filter berdasarkan company
   if (filterCompany.value !== 'all') {
     const company = adminStore.companies.find((c) => String(c.id) === String(filterCompany.value))
-
     if (company) {
       users = users.filter((u) => u.company_name === company.name)
     }
   }
 
+  // filter berdasarkan search
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     users = users.filter(
@@ -131,7 +135,16 @@ const filteredUsers = computed(() => {
     )
   }
 
+  // hanya tampilkan intern
+  users = users.filter((u) => u.role === 'intern')
+
   return users
+})
+
+const paginatedUsers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredUsers.value.slice(start, end)
 })
 
 const getAvatarUrl = (path) => {
@@ -188,55 +201,83 @@ const openAudit = async (user) => {
   }
 }
 
-const handleExportDaily = async () => {
-  const today = new Date().toISOString().split('T')[0]
+const formatTimeOrStatus = (checkIn, checkOut, type) => {
+  if (!checkIn && !checkOut) return 'Tidak Hadir'
 
-  try {
-    const rows = await adminStore.exportDailyData(today)
-    console.table(rows)
-    toastRef.value.addToast('Data harian berhasil diambil', 'success')
-  } catch (error) {
-    toastRef.value.addToast('Gagal mengambil data', 'error')
+  if (type === 'in') {
+    if (!checkIn) return 'Belum Check-in'
+    return new Date(checkIn).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  }
+
+  if (type === 'out') {
+    if (!checkOut) return 'Belum Check-out'
+    return new Date(checkOut).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
   }
 }
 
-const exportAllUsers = () => {
-  const users = adminStore.users
+const handleExportToday = async () => {
+  const today = new Date().toISOString().slice(0, 10)
 
-  if (!users.length) {
-    toastRef.value.addToast('Tidak ada data user untuk diexport', 'error')
+  try {
+    const rows = await adminStore.exportAttendanceDaily(today)
+    exportToExcel(rows, `attendance_${today}.xlsx`)
+    toastRef.value.addToast('Export harian berhasil', 'success')
+  } catch (e) {
+    toastRef.value.addToast('Gagal export harian', 'error')
+  }
+}
+
+const exportToExcel = (rows, filename) => {
+  if (!rows || !rows.length) {
+    toastRef.value.addToast('Tidak ada data untuk diexport', 'error')
     return
   }
 
-  const rows = users.map((u, i) => ({
+  const formatted = rows.map((r, i) => ({
     No: i + 1,
-    Nama: u.name,
-    Email: u.email,
-    Role: u.role,
-    Company: u.company_name || '-',
-    Status: u.status ? 'Active' : 'Inactive',
-    CheckIn: u.check_in || '-',
-    CheckOut: u.check_out || '-',
-    Dibuat: new Date(u.created_at).toLocaleString('id-ID'),
+    Nama: r.name,
+    Email: r.email,
+    Company: r.company_name,
+    Tanggal: r.date,
+    CheckIn: formatTimeOrStatus(r.check_in_at, r.check_out_at, 'in'),
+    CheckOut: formatTimeOrStatus(r.check_in_at, r.check_out_at, 'out'),
   }))
 
-  const worksheet = XLSX.utils.json_to_sheet(rows)
-  const workbook = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(formatted)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Attendance')
 
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Users')
-
-  XLSX.writeFile(workbook, `users_export_${new Date().toISOString().split('T')[0]}.xlsx`)
-
-  toastRef.value.addToast('Export user berhasil', 'success')
+  XLSX.writeFile(wb, filename)
 }
 
-const handleExportClick = () => {
-  openConfirm({
-    title: 'Konfirmasi Export',
-    message:
-      'Anda akan mengekspor seluruh data user ke file Excel. Pastikan data digunakan sesuai kebijakan.',
-    action: exportAllUsers,
-  })
+const selectedMonth = ref(
+  new Date().toISOString().slice(0, 7), // YYYY-MM
+)
+
+const handleExportMonthly = async () => {
+  try {
+    const rows = await adminStore.exportAttendanceMonthly(selectedMonth.value)
+    exportToExcel(rows, `attendance_${selectedMonth.value}.xlsx`)
+    toastRef.value.addToast('Export bulanan berhasil', 'success')
+  } catch (e) {
+    toastRef.value.addToast('Gagal export bulanan', 'error')
+  }
+}
+
+const goPrev = () => {
+  if (currentPage.value > 1) currentPage.value--
+}
+
+const goNext = () => {
+  if (currentPage.value < totalPages.value) currentPage.value++
 }
 
 const toggleStatus = (user) => {
@@ -321,6 +362,11 @@ const handleSubmit = async () => {
   }
 }
 
+watch([filteredUsers], () => {
+  totalUsers.value = filteredUsers.value.length
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
 onMounted(() => {
   adminStore.fetchUsers()
   adminStore.fetchCompanies()
@@ -336,19 +382,43 @@ onMounted(() => {
         <h1 class="text-3xl font-bold dark:text-white">Manage Users</h1>
         <p class="text-gray-500">Kelola akses, registrasi, dan status personil.</p>
       </div>
-      <div class="flex gap-3">
-        <button
-          @click="handleExportClick"
-          class="bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 px-4 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:-translate-y-1 transition"
-        >
-          <FileText size="20" /> <span>Export Users</span>
-        </button>
-        <button
-          @click="openCreate"
-          class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:-translate-y-1"
-        >
-          <UserPlus size="20" /> <span>Add User</span>
-        </button>
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-2">
+            <button
+              @click="handleExportToday"
+              class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm transition-all hover:-translate-y-0.5"
+            >
+              Export Hari Ini
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 pl-4 border-l border-zinc-200 dark:border-zinc-700">
+            <input
+              v-model="selectedMonth"
+              type="month"
+              class="px-3 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              title="Exports by month"
+            />
+
+            <button
+              @click="handleExportMonthly"
+              class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition-all hover:-translate-y-0.5"
+            >
+              Export Bulan
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center">
+          <button
+            @click="openCreate"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-bold shadow-md hover:shadow-orange-500/20 transition-all hover:-translate-y-0.5"
+          >
+            <UserPlus size="20" />
+            <span>Add User</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -412,14 +482,6 @@ onMounted(() => {
         />
       </div>
       <select
-        v-model="filterRole"
-        class="px-4 py-3 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-orange-500 dark:text-white cursor-pointer"
-      >
-        <option value="all">Semua Role</option>
-        <option value="intern">Intern</option>
-        <option value="admin">Admin</option>
-      </select>
-      <select
         v-model="filterCompany"
         class="px-4 py-3 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-orange-500 dark:text-white cursor-pointer"
       >
@@ -446,7 +508,7 @@ onMounted(() => {
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-zinc-800">
           <tr
-            v-for="u in filteredUsers"
+            v-for="u in paginatedUsers"
             :key="u.id"
             class="hover:bg-orange-50/50 dark:hover:bg-zinc-800/50 transition"
           >
@@ -613,6 +675,26 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+      <div class="flex justify-between items-center px-6 py-4 border-t dark:border-zinc-800">
+        <div class="text-sm text-gray-500 dark:text-gray-400">Total Users: {{ totalUsers }}</div>
+        <div class="flex items-center gap-2">
+          <button
+            @click="goPrev"
+            :disabled="currentPage === 1"
+            class="px-3 py-1 rounded bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span class="text-sm"> Page {{ currentPage }} of {{ totalPages }} </span>
+          <button
+            @click="goNext"
+            :disabled="currentPage >= totalPages"
+            class="px-3 py-1 rounded bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">

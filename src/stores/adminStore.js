@@ -38,6 +38,26 @@ export const useAdminStore = defineStore('admin', {
       }
     },
 
+    async fetchUsersPaginated({ page = 1, limit = 20, company_id = null, role = 'all' }) {
+      try {
+        const offset = (page - 1) * limit
+        const params = new URLSearchParams()
+        if (company_id) params.append('company_id', company_id)
+        if (role) params.append('role', role)
+        params.append('limit', limit)
+        params.append('offset', offset)
+
+        const res = await fetch(`${API_BASE_URL}/users?${params.toString()}`)
+        const data = await res.json()
+
+        this.users = data.users
+        return data.total || 0
+      } catch (err) {
+        console.error(err)
+        throw err
+      }
+    },
+
     async createUser(userData) {
       const { data } = await api.post('/api/admin/users', userData)
       await this.fetchUsers()
@@ -157,15 +177,24 @@ export const useAdminStore = defineStore('admin', {
     },
 
     // ================= AUDIT & EXPORT =================
-    async exportDailyData(date) {
-      const { data } = await api.get(`/api/export/daily/${date}`)
-      return data.data || data
-    },
-
     async fetchUserAuditLogs(id) {
       const { data } = await api.get(`/api/audit/user/${id}`)
       console.log(`/api/audit/user/${id}`)
       return data.data || data
+    },
+
+    async exportAttendanceDaily(date) {
+      const { data } = await api.get('/api/export/attendance/daily', {
+        params: { date },
+      })
+      return data.data
+    },
+
+    async exportAttendanceMonthly(month) {
+      const { data } = await api.get('/api/export/attendance/monthly', {
+        params: { month },
+      })
+      return data.data
     },
 
     async syncHolidays() {
