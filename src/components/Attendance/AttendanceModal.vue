@@ -14,11 +14,11 @@ import {
 import { useAttendanceStore } from '../../stores/attendanceStore'
 import { useLocationStore } from '../../stores/locationStore'
 
-const props = defineProps(['type']) // Kita ambil lokasi dari Store, bukan props lagi
+const props = defineProps(['type'])
 const emit = defineEmits(['close', 'success', 'error'])
 
 const attendanceStore = useAttendanceStore()
-const locationStore = useLocationStore() // Import Store Global
+const locationStore = useLocationStore()
 
 const videoEl = ref(null)
 const canvasEl = ref(null)
@@ -31,7 +31,6 @@ const isSubmitting = ref(false)
 const distanceToOffice = ref(0)
 const isWithinRadius = ref(false)
 
-// --- 1. AMBIL DATA LOKASI INSTANT DARI STORE ---
 const liveLocation = computed(() => {
   if (locationStore.coords.latitude) {
     return {
@@ -49,7 +48,6 @@ const signalSource = computed(() => {
     : 'wifi'
 })
 
-// --- 2. LOGIKA JARAK (Haversine) ---
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3
   const φ1 = (lat1 * Math.PI) / 180
@@ -63,7 +61,6 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c)
 }
 
-// Watcher Jarak Realtime
 watchEffect(() => {
   if (liveLocation.value && attendanceStore.office) {
     const dist = calculateDistance(
@@ -78,7 +75,6 @@ watchEffect(() => {
   }
 })
 
-// --- 3. CAMERA LOGIC (Sama seperti sebelumnya) ---
 const startCamera = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -135,7 +131,6 @@ const retakePhoto = () => {
 const handleSubmit = async () => {
   if (!photoBlob.value || !liveLocation.value) return
 
-  // Validasi Radius (Hanya untuk Check-IN)
   if (!isWithinRadius.value && props.type === 'IN') {
     emit('error', `Jarak terlalu jauh (${distanceToOffice.value}m). Harap mendekat ke kantor.`)
     return
@@ -150,7 +145,6 @@ const handleSubmit = async () => {
       accuracy: liveAccuracy.value,
       provider: signalSource.value,
     }
-    // Kirim Foto + Lokasi ke Store
     const res = await attendanceStore.submitAttendance(props.type, photoBlob.value, {
       latitude: liveLocation.value.latitude,
       longitude: liveLocation.value.longitude,
@@ -159,7 +153,9 @@ const handleSubmit = async () => {
     emit('success', res.message || 'Absensi Berhasil')
     emit('close')
   } catch (err) {
-    emit('error', err.message || 'Gagal memproses absensi')
+    const errorMsg = err.response?.data?.message || err.message || 'Gagal memproses absensi'
+
+    emit('error', errorMsg)
   } finally {
     isSubmitting.value = false
   }
@@ -167,7 +163,6 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   startCamera()
-  // Lokasi sudah otomatis jalan dari Store, tidak perlu startLocationWatch manual
 })
 
 onUnmounted(() => {

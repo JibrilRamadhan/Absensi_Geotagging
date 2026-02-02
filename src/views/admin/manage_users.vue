@@ -79,7 +79,6 @@ const handleConfirm = async () => {
 }
 
 const dashboardStats = computed(() => {
-  // pastikan array, jika object ambil .users atau [] sebagai fallback
   const allUsers = Array.isArray(adminStore.users)
     ? adminStore.users
     : adminStore.users?.users || []
@@ -194,7 +193,6 @@ const openAudit = async (user) => {
       const logs = await adminStore.fetchUserAuditLogs(user.id)
       auditLogs.value = logs
     } else {
-      // toastRef.value.addToast('Fitur Audit Log belum tersedia di Store', 'error')
     }
   } catch (error) {
     toastRef.value.addToast('Gagal memuat audit log', 'error')

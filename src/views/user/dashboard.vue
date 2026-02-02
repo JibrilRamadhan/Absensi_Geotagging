@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import AttendanceModal from '../../components/Attendance/AttendanceModal.vue'
 import { useAttendanceStore } from '../../stores/attendanceStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -41,6 +41,9 @@ const officeLocation = ref(null)
 const officeRadius = ref(100)
 const isMapExpanded = ref(false)
 const currentMapStyle = ref('default')
+const JAM_MASUK_KANTOR = 9
+const JAM_PERINGATAN_CHECKOUT = 18
+const JAM_AUTO_CLOSE = 23
 
 const userLocation = computed(() => {
   if (locationStore.coords.latitude && locationStore.coords.longitude) {
@@ -164,6 +167,16 @@ watch([userLocation, officeLocation], ([uLoc, oLoc]) => {
   }
 })
 
+watch(isMapExpanded, async () => {
+  await nextTick()
+
+  if (mapRef.value && mapRef.value.leafletObject) {
+    setTimeout(() => {
+      mapRef.value.leafletObject.invalidateSize()
+    }, 500)
+  }
+})
+
 watch(
   () => attendanceStore.office,
   (newVal) => {
@@ -190,7 +203,7 @@ const metrics = computed(() => {
     if (log.check_in) {
       present++
       const checkIn = new Date(log.check_in)
-      if (checkIn.getHours() >= 9) late++
+      if (checkIn.getHours() >= JAM_MASUK_KANTOR) late++
     }
   })
 
@@ -268,11 +281,43 @@ const openAttendance = (type) => {
   showAttendanceModal.value = true
 }
 
+const showLateCheckoutWarning = computed(() => {
+  const now = new Date()
+  return (
+    attendanceStore.alreadyCheckedIn &&
+    !attendanceStore.alreadyCheckedOut &&
+    now.getHours() >= JAM_PERINGATAN_CHECKOUT
+  )
+})
+
 const handleSuccess = async (msg) => {
   toastRef.value.addToast(msg, 'success')
   await attendanceStore.fetchTodayStatus()
 }
-const handleError = (msg) => toastRef.value.addToast(msg, 'error')
+const handleAttendanceError = (msg) => {
+  if (msg.startsWith('HOLIDAY:')) {
+    const holidayName = msg.split(':')[1]
+    toastRef.value.addToast(`Absen Ditolak: Hari ini libur (${holidayName})`, 'danger')
+  } else if (msg.startsWith('LEAVE:')) {
+    const leaveType = msg.split(':')[1]
+    toastRef.value.addToast(
+      `Anda sedang dalam status izin: ${leaveType}. Tidak perlu absen.`,
+      'info',
+    )
+  } else if (msg === 'ALREADY_CHECKIN') {
+    toastRef.value.addToast(
+      'Anda belum Check-Out dari sesi sebelumnya! Silahkan Check-Out dulu.',
+      'warning',
+    )
+  } else if (msg === 'ATTENDANCE_COMPLETED') {
+    toastRef.value.addToast('Anda sudah menyelesaikan absensi hari ini.', 'success')
+  } else if (msg.startsWith('OUT_OF_RANGE:')) {
+    const parts = msg.split(':')
+    toastRef.value.addToast(`Kejauhan! Jarak: ${parts[1]}m (Max: ${parts[2]}m)`, 'danger')
+  } else {
+    toastRef.value.addToast(msg, 'danger')
+  }
+}
 
 const distanceToOffice = computed(() => {
   if (!userLocation.value || !officeLocation.value) return null
@@ -391,14 +436,33 @@ onMounted(async () => {
     <div class="px-6 py-8 max-w-7xl mx-auto">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div class="lg:col-span-8 space-y-8">
+          <div
+            v-if="showLateCheckoutWarning"
+            class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-4 flex items-start gap-4 animate-pulse"
+          >
+            <div
+              class="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 shrink-0"
+            >
+              <AlertTriangle size="24" />
+            </div>
+            <div>
+              <h4 class="font-bold text-amber-700 dark:text-amber-400 text-lg">Belum Check-Out?</h4>
+              <p class="text-sm text-amber-600 dark:text-amber-500/80 mt-1">
+                Jam kerja sudah berakhir ({{ JAM_PERINGATAN_CHECKOUT }}:00). Segera lakukan
+                <b>Check-OUT</b> sekarang sebelum sistem menutup absen otomatis pada pukul
+                {{ JAM_AUTO_CLOSE }}:59.
+              </p>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
             <button
               @click="openAttendance('IN')"
               :disabled="!canCheckIn"
-              class="group relative overflow-hidden rounded-4xl p-8 text-left transition-all duration-300 border"
+              class="group relative overflow-hidden rounded-[2rem] p-8 text-left transition-all duration-300 border"
               :class="
                 canCheckIn
-                  ? 'border-transparent bg-linear-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/20 hover:shadow-2xl hover:shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99]'
+                  ? 'border-transparent bg-gradient-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/20 hover:shadow-2xl hover:shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99]'
                   : 'border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-zinc-900 opacity-100 cursor-not-allowed'
               "
             >
@@ -458,7 +522,7 @@ onMounted(async () => {
                 class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
               >
                 <div
-                  class="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"
+                  class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"
                 ></div>
               </div>
             </button>
@@ -570,7 +634,6 @@ onMounted(async () => {
                   {{ metric.title }}
                 </p>
               </div>
-
               <div
                 class="absolute top-3 right-3 size-1.5 rounded-full bg-slate-200 dark:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:scale-150"
               ></div>
@@ -1157,16 +1220,16 @@ onMounted(async () => {
                 class="flex gap-4 group cursor-pointer hover:-translate-y-0.5 transition-all duration-300"
               >
                 <div
-                  class="size-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500"
+                  class="size-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500"
                 >
-                  <MapPin
-                    class="text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform duration-300"
+                  <Building2
+                    class="text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300"
                     size="18"
                   />
                 </div>
                 <div>
                   <p
-                    class="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase mb-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-300"
+                    class="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase mb-1 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-300"
                   >
                     Alamat Kantor
                   </p>
@@ -1217,7 +1280,7 @@ onMounted(async () => {
       :type="attendanceType"
       @close="showAttendanceModal = false"
       @success="handleSuccess"
-      @error="handleError"
+      @error="handleAttendanceError"
     />
   </div>
 </template>
