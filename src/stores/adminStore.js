@@ -4,6 +4,7 @@ import api from '../api/axios'
 export const useAdminStore = defineStore('admin', {
   state: () => ({
     users: [],
+    allUsers: [],
     companies: [],
     leaves: [],
     holidays: [],
@@ -38,24 +39,20 @@ export const useAdminStore = defineStore('admin', {
       }
     },
 
-    async fetchUsersPaginated({ page = 1, limit = 20, company_id = null, role = 'all' }) {
-      try {
-        const offset = (page - 1) * limit
-        const params = new URLSearchParams()
-        if (company_id) params.append('company_id', company_id)
-        if (role) params.append('role', role)
-        params.append('limit', limit)
-        params.append('offset', offset)
+    async fetchUsersPaginated({ page, limit, company_id, role }) {
+      const offset = (page - 1) * limit
+      const params = new URLSearchParams({ limit, offset, company_id, role })
+      const { data } = await api.get(`/api/admin/users?${params}`)
 
-        const res = await fetch(`${API_BASE_URL}/users?${params.toString()}`)
-        const data = await res.json()
+      this.users = Array.isArray(data.users) ? data.users : []
+      return data.total || 0
+    },
 
-        this.users = data.users
-        return data.total || 0
-      } catch (err) {
-        console.error(err)
-        throw err
-      }
+    async fetchAllUsers(filters = {}) {
+      const params = new URLSearchParams(filters).toString()
+      const { data } = await api.get(`/api/admin/users/all?${params}`)
+
+      this.allUsers = Array.isArray(data) ? data : Array.isArray(data.users) ? data.users : []
     },
 
     async createUser(userData) {

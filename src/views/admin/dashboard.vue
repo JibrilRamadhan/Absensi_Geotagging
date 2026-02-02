@@ -36,7 +36,7 @@ let timeInterval = null
 const loadData = async () => {
   isLoading.value = true
   try {
-    await Promise.all([adminStore.fetchUsers(), adminStore.fetchCompanies()])
+    await Promise.all([adminStore.fetchAllUsers(), adminStore.fetchCompanies()])
     toastRef.value?.addToast('Data berhasil dimuat', 'success')
   } catch (error) {
     toastRef.value?.addToast('Gagal memuat data dashboard', 'error')
@@ -49,7 +49,7 @@ const loadData = async () => {
 }
 
 const dashboardData = computed(() => {
-  const users = adminStore.users || []
+  const users = adminStore.allUsers || []
   const companies = adminStore.companies || []
   const interns = users.filter((u) => u.role === 'intern')
   const present = interns.filter((u) => u.check_in).length
@@ -111,20 +111,29 @@ const statCards = computed(() => [
 ])
 
 const liveAttendanceList = computed(() => {
-  return adminStore.users
-    .filter((u) => u.check_in && u.role === 'intern')
+  if (!Array.isArray(adminStore.allUsers)) return []
+
+  return adminStore.allUsers
+    .filter((u) => u?.role === 'intern' && u?.check_in)
     .sort((a, b) => new Date(b.check_in) - new Date(a.check_in))
     .slice(0, 8)
 })
 
 const topCompanies = computed(() => {
-  const companyMap = {}
-  adminStore.users
-    .filter((u) => u.role === 'intern')
-    .forEach((u) => {
-      const name = u.company_name || 'No Company'
-      companyMap[name] = (companyMap[name] || 0) + 1
-    })
+  const users = Array.isArray(adminStore.allUsers) ? adminStore.allUsers : []
+
+  if (users.length === 0) return []
+
+  const companyMap = Object.create(null)
+
+  for (let i = 0; i < users.length; i++) {
+    const u = users[i]
+
+    if (u.role !== 'intern') continue
+
+    const name = u.company_name ?? 'No Company'
+    companyMap[name] = (companyMap[name] || 0) + 1
+  }
 
   return Object.entries(companyMap)
     .sort((a, b) => b[1] - a[1])
@@ -204,7 +213,7 @@ const updateCharts = () => {
   attendanceChart.render()
 
   const companyMap = {}
-  adminStore.users
+  adminStore.allUsers
     .filter((u) => u.role === 'intern')
     .forEach((u) => {
       const name = u.company_name || 'No Company'
@@ -586,7 +595,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div v-if="topCompanies.length === 0" class="text-center py-8 text-gray-400">
+            <div v-if="topCompanies?.length === 0" class="text-center py-8 text-gray-400">
               <Building2 class="w-12 h-12 mx-auto mb-2 opacity-50" />
               <p class="text-sm">Belum ada data perusahaan</p>
             </div>

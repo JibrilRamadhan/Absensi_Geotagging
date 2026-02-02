@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed, reactive, watch } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
 import Toast from '../../components/Allert/allert.vue'
 import {
@@ -20,6 +20,24 @@ const adminStore = useAdminStore()
 const toastRef = ref(null)
 const leaves = ref([])
 const isLoading = ref(false)
+
+const currentPage = ref(1)
+const perPage = ref(5)
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredLeaves.value.length / perPage.value)
+})
+
+const paginatedLeaves = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  const end = start + perPage.value
+  return filteredLeaves.value.slice(start, end)
+})
+
+const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
 
 const searchQuery = ref('')
 const activeTab = ref('all')
@@ -119,6 +137,10 @@ const getDuration = (start, end) => {
 const getAttachmentUrl = (path) => (path ? `${API_BASE_URL}${path}` : null)
 
 onMounted(fetchLeaves)
+
+watch([searchQuery, activeTab], () => {
+  currentPage.value = 1
+})
 </script>
 
 <template>
@@ -207,7 +229,7 @@ onMounted(fetchLeaves)
 
             <tr
               v-else
-              v-for="leave in filteredLeaves"
+              v-for="leave in paginatedLeaves"
               :key="leave.id"
               class="group hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-colors"
             >
@@ -329,6 +351,30 @@ onMounted(fetchLeaves)
             </tr>
           </tbody>
         </table>
+        <div
+          v-if="totalPages > 1"
+          class="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-zinc-800"
+        >
+          <p class="text-sm text-gray-400">Page {{ currentPage }} of {{ totalPages }}</p>
+
+          <div class="flex gap-2">
+            <button
+              @click="changePage(currentPage - 1)"
+              :disabled="currentPage === 1"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-zinc-800 disabled:opacity-40"
+            >
+              Prev
+            </button>
+
+            <button
+              @click="changePage(currentPage + 1)"
+              :disabled="currentPage === totalPages"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-zinc-800 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
